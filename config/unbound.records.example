@@ -33,7 +33,7 @@ pod-240-fleet1.sddc.lab 10.203.240.17/24
 pod-240-int1.sddc.lab 10.203.240.18/24
 pod-240-vidb.sddc.lab 10.203.240.19/24
 pod-240-auto.sddc.lab 10.203.240.20/24
-pod-240-license.sddc.lab 10.203.240.21/24
 pod-240-autosvc.sddc.lab 10.203.240.56/24
+pod-240-license.sddc.lab 10.203.240.21/24
 pod-240-en1.sddc.lab 10.203.240.57/24
 pod-240-en2.sddc.lab 10.203.240.58/24
