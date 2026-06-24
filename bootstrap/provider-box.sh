@@ -29,8 +29,12 @@ Usage:
   sudo bash bootstrap/provider-box.sh --s3 --remove
   sudo bash bootstrap/provider-box.sh --sftp
   sudo bash bootstrap/provider-box.sh --sftp --remove
+  sudo bash bootstrap/provider-box.sh --technitium
+  sudo bash bootstrap/provider-box.sh --technitium --remove
   sudo bash bootstrap/provider-box.sh --all
   sudo bash bootstrap/provider-box.sh --all --remove
+
+Note: --technitium is NOT included in --all. It must be deployed explicitly.
 USAGE
 }
 
@@ -498,6 +502,10 @@ require_module_file "${BOOTSTRAP_DIR}/depot.sh"
 # shellcheck disable=SC1090
 source "${BOOTSTRAP_DIR}/depot.sh"
 
+require_module_file "${BOOTSTRAP_DIR}/technitium.sh"
+# shellcheck disable=SC1090
+source "${BOOTSTRAP_DIR}/technitium.sh"
+
 require_root
 
 TARGET_SERVICE=""
@@ -511,7 +519,7 @@ for arg in "$@"; do
       [[ "${REMOVE_MODE}" -eq 0 ]] || fail "Duplicate --remove flag"
       REMOVE_MODE=1
       ;;
-    --unbound|--ntp|--rsyslog|--ca|--depot|--keycloak|--netbox|--s3|--sftp|--all)
+    --unbound|--ntp|--rsyslog|--ca|--depot|--keycloak|--netbox|--s3|--sftp|--technitium|--all)
       [[ -z "${TARGET_SERVICE}" ]] || fail "Specify exactly one service flag"
       TARGET_SERVICE="$arg"
       ;;
@@ -619,6 +627,16 @@ case "${TARGET_SERVICE}" in
     else
       require_common_vars
       do_sftp
+    fi
+    ;;
+  --technitium)
+    require_env_file
+    load_env
+    if [[ "${REMOVE_MODE}" -eq 1 ]]; then
+      remove_technitium
+    else
+      require_common_vars
+      do_technitium
     fi
     ;;
   --all)
