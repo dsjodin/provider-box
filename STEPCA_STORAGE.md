@@ -1,0 +1,123 @@
+# step-ca Storage Layout (BadgerDB)
+
+Reference for how `stepca-api`'s reconcile job reads issued/revoked certificates directly from step-ca's embedded database. This is the **version-fragile** part of the service — it depends on step-ca's internal storage format, which is not a stable public API.
+
+> All of this is isolated in one file (`internal/reconcile/badger.go`, behind the `Source` interface). When step-ca bumps and something here changes, that is the only file to fix.
+
+---
+
+## Verified against
+
+- **step-ca**: v0.30.2
+- **smallstep/nosql**: v0.8.0 (the Badger v2 codepath)
+
+Re-verify against source on any step-ca minor bump. The facts below were read from `smallstep/nosql` and step-ca source, **not** confirmed against a live CA dir from the build environment — run the live check in the last section when you have access to `/opt/provider-box/step-ca/db`.
+
+---
+
+## Key encoding (the #1 gotcha)
+
+smallstep/nosql's Badger backend does **not** use a human-readable `"bucket/key"` string key. `badger/v2/badger.go::toBadgerKey` encodes keys as **binary**:
+
+```
+[2-byte LE bucket length][bucket bytes][2-byte LE key length][key bytes]
+```
+
+So a prefix scan for an ASCII string like `"x509_certs/"` matches **zero entries** and the reconcile silently returns an empty inventory (no error — the worst failure mode). The correct prefix to iterate a bucket is:
+
+```
+[2-byte LE bucket length][bucket bytes]
+```
+
+Implemented as `bucketPrefix(name)`.
+
+---
+
+## Buckets
+
+| Bucket | Key | Value | Notes |
+|---|---|---|---|
+| `x509_certs` | decimal serial string | `crt.Raw` (raw **DER** bytes) | The issued cert itself |
+| `x509_certs_data` | decimal serial string | `CertificateData` JSON | Provisioner metadata; **lowercase** JSON tags |
+| `revoked_x509_certs` | decimal serial string | `RevokedCertificateInfo` | **Go-style capitalized** field names, no JSON tags |
+
+### Value formats — two more gotchas
+
+**`x509_certs` holds DER, not PEM.** From step-ca `db/db.go::StoreCertificate`:
+
+```go
+db.Set(certsTable, []byte(crt.SerialNumber.String()), crt.Raw)
+```
+
+`crt.Raw` is raw DER. Do **not** `pem.Decode` first — that skips every cert. Parse directly:
+
+```go
+cert, err := x509.ParseCertificate(raw)
+```
+
+**`x509_certs_data`** value is JSON shaped roughly like `CertificateData{ Provisioner: {id, name, type}, ... }` with **lowercase** json tags. A point lookup here populates the inventory's `provisioner` column (otherwise null).
+
+**`revoked_x509_certs`** value (`RevokedCertificateInfo`) has **no JSON tags** — Go default capitalized field names (`Serial`, `Reason`, `RevokedAt`). The mirror struct used to unmarshal must use matching capitalized tags or the fields come back empty.
+
+---
+
+## Serial number form (the #3 gotcha)
+
+step-ca keys all three buckets by the **decimal** string of the serial (`cert.SerialNumber.String()`). The `stepca-api` design specifies **hex** for the SQLite primary key.
+
+Resolution: normalize to **lowercase hex** at read time for both issued and revoked rows:
+
+```go
+serialHex := fmt.Sprintf("%x", cert.SerialNumber) // big.Int
+```
+
+This matters beyond cosmetics: revoke-by-serial later must match the stored row. If issuance stores decimal and revoke looks up hex (or vice versa), the join silently fails. Normalizing both write paths to hex keeps the primary key internally consistent regardless of step-ca's representation.
+
+---
+
+## Concurrency / read-only lock (open decision — deploy concern, not a code bug)
+
+Badger is an embedded KV store; step-ca normally holds an **exclusive lock** on the directory. Opening the same dir from the reconciler with `WithReadOnly(true)` is fragile — read-only mode opens the value log read-only and skips GC, but concurrent open against a live step-ca may fail with a lock error.
+
+This is an architecture choice, decide deliberately rather than discover at deploy. Options, most-robust first:
+
+1. **Snapshot-on-reconcile** — copy the db dir (or use a filesystem/volume snapshot) and read the copy each interval. Safe, no lock contention, slightly stale — fine for an inventory that refreshes on a short interval. **Recommended.**
+2. **Backfill-only Badger read + webhook for currency** — read Badger once at startup for history, then keep the inventory live via the step-ca issuance webhook. Matches the original layered design; no ongoing lock contention.
+3. **Concurrent read-only open** — hope it works on your filesystem. Fragile; don't rely on it.
+
+Lean: snapshot-on-reconcile, or backfill-only if/when the webhook lands. Either keeps the reconciler from contending with step-ca for the lock.
+
+---
+
+## If the reader returns an empty inventory
+
+Order of suspicion:
+
+1. **Wrong backend.** Some step-ca configs use Badger **v1**, or a **SQL** backend (MySQL/Postgres), not Badger v2. This entire document only applies to the v2 Badger codepath. Check what's actually on disk:
+   ```
+   ls /opt/provider-box/step-ca/db/
+   ```
+   Badger v2 shows `*.sst`, `*.vlog`, `MANIFEST`, `KEYREGISTRY`, `LOCK`. If it looks like a SQL DSN config instead, the reader needs a different `Source` implementation.
+2. **Key encoding regressed** — re-confirm `toBadgerKey` in the pinned smallstep/nosql version.
+3. **Bucket names changed** — re-confirm `x509_certs` / `x509_certs_data` / `revoked_x509_certs` against step-ca source.
+
+---
+
+## Live verification
+
+Run against the real CA dir when available:
+
+```bash
+STEPCA_API_TOKEN_FILE=/path/to/token \
+go run ./cmd/stepca-api \
+  -db /tmp/stepca-api.db \
+  -ca-db /opt/provider-box/step-ca/db \
+  -addr :8443 \
+  -reconcile-interval 10s
+
+# then, in another shell:
+curl -s -H "Authorization: Bearer $(cat /path/to/token)" \
+  http://localhost:8443/certs | jq 'length, .[].common_name'
+```
+
+Pass condition: the certs you know step-ca issued during deployment (the **NetBox leaf**, **depot**, and **Keycloak** certs) appear in the list. If they do, the layout is confirmed live and the service can proceed to the revoke proxy. If they don't, start with the empty-inventory checklist above.
