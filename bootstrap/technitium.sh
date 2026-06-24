@@ -88,6 +88,7 @@ bootstrap_technitium_layout() {
     "${WORKDIR}/technitium" \
     "${TECHNITIUM_DATA_DIR}" \
     "${TECHNITIUM_CERT_DIR}"
+  chown 1000:1000 "${TECHNITIUM_DATA_DIR}"
 }
 
 issue_technitium_certificates() {
