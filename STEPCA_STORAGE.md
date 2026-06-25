@@ -75,17 +75,22 @@ This matters beyond cosmetics: revoke-by-serial later must match the stored row.
 
 ---
 
-## Concurrency / read-only lock (open decision — deploy concern, not a code bug)
+## Concurrency / read-only lock (resolved: snapshot-on-reconcile)
 
-Badger is an embedded KV store; step-ca normally holds an **exclusive lock** on the directory. Opening the same dir from the reconciler with `WithReadOnly(true)` is fragile — read-only mode opens the value log read-only and skips GC, but concurrent open against a live step-ca may fail with a lock error.
+Badger is an embedded KV store; step-ca holds an **exclusive lock** on its data directory while it is running. Opening the same dir from the reconciler with `WithReadOnly(true)` may fail with a lock error on some filesystems and is fragile in general.
 
-This is an architecture choice, decide deliberately rather than discover at deploy. Options, most-robust first:
+**Resolved: snapshot-on-reconcile.** The reconciler never opens the live step-ca DB. Before each Badger read it copies the configured `-ca-db` directory to a unique temp directory under `-snapshot-dir` (default `os.TempDir()`), opens the COPY read-only, reads, then removes the copy. Implementation is `BadgerSource.withSnapshot` in `internal/reconcile/badger.go`.
 
-1. **Snapshot-on-reconcile** — copy the db dir (or use a filesystem/volume snapshot) and read the copy each interval. Safe, no lock contention, slightly stale — fine for an inventory that refreshes on a short interval. **Recommended.**
-2. **Backfill-only Badger read + webhook for currency** — read Badger once at startup for history, then keep the inventory live via the step-ca issuance webhook. Matches the original layered design; no ongoing lock contention.
-3. **Concurrent read-only open** — hope it works on your filesystem. Fragile; don't rely on it.
+A failed or inconsistent copy (e.g. step-ca wrote mid-copy, MANIFEST disagrees with vlog, snapshot dir is out of space) is returned as an error from `Issued`/`Revoked`. `reconcile.tick()` logs it and returns; the loop retries on the next interval. The service does not crash.
 
-Lean: snapshot-on-reconcile, or backfill-only if/when the webhook lands. Either keeps the reconciler from contending with step-ca for the lock.
+Two copies per reconcile pass (one for issued, one for revoked) - the store layer's `Upsert` preserves revocation across passes, so any window where the two snapshots disagree is self-healing on the next tick.
+
+**`cp` vs filesystem snapshot.** The current implementation is a Go-level file copy (`io.Copy` per file under `filepath.Walk`) - works on any filesystem and is the right default for a small CA DB. On a filesystem that supports cheap snapshots (ZFS, btrfs, LVM thin-provisioned), the same idea can be implemented as a snapshot mount and would be faster + atomic. The interface (a fresh read-only Badger handle scoped to one pass) does not change; only the snapshot mechanism does. Swap the `copyTree` call for a snapshot/mount call if/when warranted.
+
+The alternatives below remain valid future paths but are not the current choice:
+
+- **Backfill-only Badger read + webhook for currency** - read Badger once at startup for history, then keep the inventory live via the step-ca issuance webhook. Matches the original layered design; no ongoing copy cost.
+- **Concurrent read-only open of the live dir** - was the fragile option this section resolved away from. Don't.
 
 ---
 

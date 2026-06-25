@@ -19,7 +19,8 @@ import (
 
 func main() {
 	dbPath := flag.String("db", envOr("STEPCA_API_DB", "/data/stepca-api.db"), "SQLite inventory path")
-	caDB := flag.String("ca-db", envOr("STEPCA_API_CA_DB", "/home/step/db"), "step-ca BadgerDB path")
+	caDB := flag.String("ca-db", envOr("STEPCA_API_CA_DB", "/home/step/db"), "step-ca BadgerDB path (never opened directly; snapshotted per read)")
+	snapshotDir := flag.String("snapshot-dir", envOr("STEPCA_API_SNAPSHOT_DIR", ""), "Parent directory for per-read step-ca DB snapshots (default: os.TempDir())")
 	interval := flag.Duration("reconcile-interval", envDuration("STEPCA_API_RECONCILE_INTERVAL", 30*time.Second), "reconcile interval")
 	addr := flag.String("addr", envOr("STEPCA_API_ADDR", ":8443"), "HTTP listen address")
 	tokenFile := flag.String("token-file", os.Getenv("STEPCA_API_TOKEN_FILE"), "Path to a file containing the API bearer token (preferred over STEPCA_API_TOKEN env)")
@@ -43,7 +44,7 @@ func main() {
 
 	rec := &reconcile.Reconciler{
 		Store:    s,
-		Source:   &reconcile.BadgerSource{Path: *caDB},
+		Source:   &reconcile.BadgerSource{Path: *caDB, SnapshotRoot: *snapshotDir},
 		Interval: *interval,
 		Logger:   logger,
 	}
@@ -77,6 +78,7 @@ func main() {
 		"addr", *addr,
 		"db", *dbPath,
 		"ca_db", *caDB,
+		"snapshot_dir", *snapshotDir,
 		"interval", interval.String(),
 	)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
