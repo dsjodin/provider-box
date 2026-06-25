@@ -123,6 +123,28 @@ func isZoneExistsError(err error) bool {
 	return a.status == "error" && strings.Contains(a.message, "Zone already exists")
 }
 
+// SetForwarder configures Technitium's upstream forwarder via /api/settings/set.
+// Multiple values may be passed; they're joined with commas as the API expects.
+// The endpoint is naturally idempotent - re-sending the same value is a no-op
+// at the server - so no special "already set" handling is needed.
+// See TECHNITIUM_API.md section 4.
+func (t *Target) SetForwarder(ctx context.Context, upstreams ...string) error {
+	if len(upstreams) == 0 {
+		return errors.New("technitium: at least one forwarder is required")
+	}
+	for _, u := range upstreams {
+		if strings.TrimSpace(u) == "" {
+			return errors.New("technitium: empty forwarder value")
+		}
+	}
+	params := url.Values{}
+	params.Set("forwarders", strings.Join(upstreams, ","))
+	if err := t.call(ctx, "/api/settings/set", params, nil); err != nil {
+		return fmt.Errorf("set forwarders: %w", err)
+	}
+	return nil
+}
+
 // zoneEntry mirrors one element of /api/zones/list.
 type zoneEntry struct {
 	Name     string `json:"name"`

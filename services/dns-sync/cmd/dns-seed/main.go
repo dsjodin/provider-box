@@ -1,8 +1,7 @@
 // dns-seed is the one-shot bootstrap CLI for the DNS layer:
 //
 //	dns-seed netbox-import <seedfile>   - import seed into NetBox IPAM (idempotent)
-//
-// Subcommands are added as the build order progresses (set-forwarder, etc).
+//	dns-seed set-forwarder <ip>...      - configure Technitium upstream forwarder (idempotent)
 package main
 
 import (
@@ -17,6 +16,7 @@ import (
 
 	"github.com/dsjodin/provider-box/services/dns-sync/internal/netbox"
 	"github.com/dsjodin/provider-box/services/dns-sync/internal/seed"
+	"github.com/dsjodin/provider-box/services/dns-sync/internal/technitium"
 )
 
 func main() {
@@ -38,6 +38,11 @@ func main() {
 			logger.Error("netbox-import failed", "err", err)
 			os.Exit(1)
 		}
+	case "set-forwarder":
+		if err := runSetForwarder(ctx, args, logger); err != nil {
+			logger.Error("set-forwarder failed", "err", err)
+			os.Exit(1)
+		}
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -52,6 +57,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "subcommands:")
 	fmt.Fprintln(os.Stderr, "  netbox-import   import config/dns.seed entries into NetBox IPAM (idempotent)")
+	fmt.Fprintln(os.Stderr, "  set-forwarder   configure Technitium upstream forwarder (idempotent)")
 }
 
 func runNetboxImport(ctx context.Context, args []string, logger *slog.Logger) error {
@@ -158,6 +164,56 @@ func ipKey(e seed.Entry) string {
 		return fmt.Sprintf("%s/%d", e.Addr.String(), bits)
 	}
 	return e.Addr.String() + "/32"
+}
+
+func runSetForwarder(ctx context.Context, args []string, logger *slog.Logger) error {
+	fs := flag.NewFlagSet("set-forwarder", flag.ExitOnError)
+	techURL := fs.String("technitium-url", os.Getenv("TECHNITIUM_URL"), "Technitium base URL")
+	techToken := fs.String("technitium-token", "", "Technitium API token (or TECHNITIUM_TOKEN env; prefer TECHNITIUM_TOKEN_FILE)")
+	techTokenFile := fs.String("technitium-token-file", os.Getenv("TECHNITIUM_TOKEN_FILE"), "Path to file containing the Technitium API token")
+	techCABundle := fs.String("technitium-ca-bundle", os.Getenv("TECHNITIUM_CA_BUNDLE"), "Optional PEM bundle for Technitium TLS")
+	upstreamsFlag := fs.String("forwarders", os.Getenv("TECHNITIUM_FORWARDER"), "Comma-separated upstream forwarders (or positional args)")
+	_ = fs.Parse(args)
+
+	upstreams := []string{}
+	if *upstreamsFlag != "" {
+		for _, u := range strings.Split(*upstreamsFlag, ",") {
+			if s := strings.TrimSpace(u); s != "" {
+				upstreams = append(upstreams, s)
+			}
+		}
+	}
+	upstreams = append(upstreams, fs.Args()...)
+	if len(upstreams) == 0 {
+		return fmt.Errorf("at least one forwarder is required (--forwarders=8.8.8.8 or positional args)")
+	}
+
+	token := readTechnitiumToken(*techToken, *techTokenFile)
+	if *techURL == "" || token == "" {
+		return fmt.Errorf("TECHNITIUM_URL and a Technitium token (token-file preferred) are required")
+	}
+
+	tt, err := technitium.New(*techURL, token, *techCABundle)
+	if err != nil {
+		return err
+	}
+	if err := tt.SetForwarder(ctx, upstreams...); err != nil {
+		return err
+	}
+	logger.Info("forwarder set", "upstreams", upstreams)
+	return nil
+}
+
+func readTechnitiumToken(flagValue, fileValue string) string {
+	if fileValue != "" {
+		if b, err := os.ReadFile(fileValue); err == nil {
+			return strings.TrimSpace(string(b))
+		}
+	}
+	if flagValue != "" {
+		return flagValue
+	}
+	return strings.TrimSpace(os.Getenv("TECHNITIUM_TOKEN"))
 }
 
 func readToken(flagValue, fileValue string) string {

@@ -192,7 +192,54 @@ ones matching the exact `domain`. Response shape:
 Auto-generated NS and SOA records appear in the listing - dns-sync must
 ignore record types it does not manage (anything other than A, AAAA, PTR).
 
-## 4. Differences from technitium-dns_design.md sec 3
+## 4. Server settings
+
+### Get all settings
+
+```
+GET /api/settings/get?token=<TOKEN>
+```
+
+Returns the full server config. Forwarder-related fields:
+
+```json
+{
+  "forwarders": null,
+  "forwarderProtocol": "Udp",
+  "concurrentForwarding": true,
+  "forwarderRetries": 3,
+  "forwarderTimeout": 2000,
+  "forwarderConcurrency": 2,
+  "recursion": "AllowOnlyForPrivateNetworks",
+  "proxy": "None"
+}
+```
+
+`forwarders` is `null` until set, then an array of IP strings (`["8.8.8.8"]`).
+
+### Set settings (partial update)
+
+```
+GET /api/settings/set?token=<TOKEN>&forwarders=<CSV>
+```
+
+Pass only the fields you want to change; everything else is preserved
+(verified by writing only `forwarders` and confirming `dnssecValidation`
+was untouched).
+
+Multiple forwarders are comma-separated and URL-encoded:
+`forwarders=8.8.8.8%2C1.1.1.1`.
+
+**Naturally idempotent.** Re-sending the same value returns `status: ok`
+with the same state. No "already set" error to special-case (unlike
+`/api/zones/create`).
+
+**Empty value is a no-op.** `forwarders=` does not clear the field; the
+previous value is preserved. To explicitly clear forwarders, look up the
+upstream's "clear" mechanism per Technitium docs (not needed by dns-sync,
+which always sets a non-empty value).
+
+## 5. Differences from technitium-dns_design.md sec 3
 
 The design doc's from-memory shape was close on path names but wrong on
 several details. Captured here so the design can be updated:
