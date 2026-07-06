@@ -174,6 +174,7 @@ issue_authentik_certificates() {
   rm -f "${fullchain_file}" "${key_file}"
 
   docker run --rm --network host \
+    --add-host "${CA_FQDN}:127.0.0.1" \
     -v "${CA_DATA_DIR}:/home/step" \
     -v "${cert_dir}:${cert_dir_in_container}" \
     "${CA_IMAGE}" \

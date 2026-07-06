@@ -122,6 +122,7 @@ issue_technitium_certificates() {
     "${cert_dir}/technitium-leaf.crt"
 
   docker run --rm --network host \
+    --add-host "${CA_FQDN}:127.0.0.1" \
     -v "${CA_DATA_DIR}:/home/step" \
     -v "${cert_dir}:${cert_dir_in_container}" \
     "${CA_IMAGE}" \
@@ -141,6 +142,7 @@ issue_technitium_certificates() {
     fail "Failed to build the Technitium CA chain bundle."
 
   docker run --rm --network host \
+    --add-host "${CA_FQDN}:127.0.0.1" \
     -v "${CA_DATA_DIR}:/home/step" \
     -v "${cert_dir}:${cert_dir_in_container}" \
     "${CA_IMAGE}" \
