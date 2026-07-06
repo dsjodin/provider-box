@@ -15,6 +15,8 @@ All notable changes to this project will be documented in this file.
 ### Fixes
 - Fix certificate issuance failing when the lab DNS zone does not resolve yet (for example while bootstrapping the DNS service itself) by pinning `CA_FQDN` to `127.0.0.1` via `--add-host` in the step-ca certificate issuance containers across all six certificate-consuming service modules, making issuance DNS-independent per the single-node design where step-ca always runs on the same host
 - Fix Docker Compose installation on Ubuntu, where apt resolves the transitional `docker-compose` package name to `docker-compose-v2` and the dpkg-based post-install check on the literal name failed; install `docker-compose-v2` explicitly (Ubuntu 22.04+) and verify compose by capability (`docker compose version`) instead of by package name
+- Fix step-ca crash-looping on first start caused by root-owned `CA_DATA_DIR` and secrets directory that the container user (uid 1000) could not read; the ca module now owns the CA data directory recursively as 1000:1000 while keeping restrictive modes (secrets 0700, password file 0600), matching the ownership handling of the other step-ca-dependent modules
+- Replace the misleading "step-ca configuration was not created" error with a bounded initialization wait that polls for `config/ca.json` and then for the CA health endpoint, failing with an actionable message pointing at the container logs
 
 ## 2026-04-27
 
