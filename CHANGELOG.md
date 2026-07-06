@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.
 - Set the Authentik brand web certificate to the discovered step-ca keypair after startup
 - Be sure to update your `config/provider-box.env`.
 
+### Fixes
+- Fix certificate issuance failing when the lab DNS zone does not resolve yet (for example while bootstrapping the DNS service itself) by pinning `CA_FQDN` to `127.0.0.1` via `--add-host` in the step-ca certificate issuance containers across all six certificate-consuming service modules, making issuance DNS-independent per the single-node design where step-ca always runs on the same host
+
 ## 2026-04-27
 
 ### Improvements
