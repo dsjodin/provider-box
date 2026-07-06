@@ -23,6 +23,8 @@ Usage:
   sudo bash bootstrap/provider-box.sh --depot --remove
   sudo bash bootstrap/provider-box.sh --keycloak
   sudo bash bootstrap/provider-box.sh --keycloak --remove
+  sudo bash bootstrap/provider-box.sh --authentik
+  sudo bash bootstrap/provider-box.sh --authentik --remove
   sudo bash bootstrap/provider-box.sh --netbox
   sudo bash bootstrap/provider-box.sh --netbox --remove
   sudo bash bootstrap/provider-box.sh --s3
@@ -481,6 +483,10 @@ require_module_file "${BOOTSTRAP_DIR}/keycloak.sh"
 # shellcheck disable=SC1090
 source "${BOOTSTRAP_DIR}/keycloak.sh"
 
+require_module_file "${BOOTSTRAP_DIR}/authentik.sh"
+# shellcheck disable=SC1090
+source "${BOOTSTRAP_DIR}/authentik.sh"
+
 require_module_file "${BOOTSTRAP_DIR}/netbox.sh"
 # shellcheck disable=SC1090
 source "${BOOTSTRAP_DIR}/netbox.sh"
@@ -526,7 +532,7 @@ for arg in "$@"; do
       [[ "${REMOVE_MODE}" -eq 0 ]] || fail "Duplicate --remove flag"
       REMOVE_MODE=1
       ;;
-    --unbound|--ntp|--rsyslog|--ca|--depot|--keycloak|--netbox|--s3|--sftp|--technitium|--dns-sync|--all)
+    --unbound|--ntp|--rsyslog|--ca|--depot|--keycloak|--authentik|--netbox|--s3|--sftp|--technitium|--dns-sync|--all)
       [[ -z "${TARGET_SERVICE}" ]] || fail "Specify exactly one service flag"
       TARGET_SERVICE="$arg"
       ;;
@@ -606,6 +612,16 @@ case "${TARGET_SERVICE}" in
       do_keycloak
     fi
     ;;
+  --authentik)
+    require_env_file
+    load_env
+    if [[ "${REMOVE_MODE}" -eq 1 ]]; then
+      remove_authentik
+    else
+      require_common_vars
+      do_authentik
+    fi
+    ;;
   --netbox)
     require_env_file
     load_env
@@ -663,6 +679,7 @@ case "${TARGET_SERVICE}" in
       remove_sftp
       remove_s3
       remove_netbox
+      remove_authentik
       remove_keycloak
       remove_depot
       remove_ca
@@ -675,6 +692,7 @@ case "${TARGET_SERVICE}" in
       do_ca
       do_depot
       do_keycloak
+      do_authentik
       do_netbox
       do_s3
       do_sftp
