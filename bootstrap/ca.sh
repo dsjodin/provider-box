@@ -47,7 +47,10 @@ normalize_ca_password_files() {
   done
 }
 
-configure_ca_service_cert_duration() {
+# step ca init runs asynchronously at first container start; key generation
+# takes seconds. Wait for the configuration to appear, then for the CA to
+# answer on its health endpoint, before doing anything that depends on it.
+wait_for_ca_init() {
   local ca_config="${CA_DATA_DIR}/config/ca.json"
   local attempt
 
@@ -55,9 +58,23 @@ configure_ca_service_cert_duration() {
     [[ -f "${ca_config}" ]] && break
     sleep 2
   done
-
   [[ -f "${ca_config}" ]] || \
-    fail "step-ca configuration was not created at ${ca_config}."
+    fail "step-ca did not initialize. Check: docker logs step-ca-step-ca-1"
+
+  for attempt in $(seq 1 30); do
+    if curl --silent --show-error --fail \
+      --cacert "${CA_DATA_DIR}/certs/root_ca.crt" \
+      --resolve "${CA_FQDN}:${CA_PORT}:127.0.0.1" \
+      "https://${CA_FQDN}:${CA_PORT}/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  fail "step-ca did not initialize. Check: docker logs step-ca-step-ca-1"
+}
+
+configure_ca_service_cert_duration() {
+  local ca_config="${CA_DATA_DIR}/config/ca.json"
 
   echo "Configuring step-ca service certificate duration: ${SERVICE_CERT_DURATION}"
   docker run --rm \
@@ -101,6 +118,10 @@ do_ca() {
     printf '%s\n' "${password_value}" > "${CA_PASSWORD_FILE}"
     chmod 600 "${CA_PASSWORD_FILE}"
   fi
+  # The step-ca image runs as uid 1000; root-owned data or secrets dirs make
+  # the entrypoint unable to read the password file and init never runs.
+  chown -R 1000:1000 "${CA_DATA_DIR}"
+  chmod 0700 "${password_dir}"
   normalize_ca_password_files
 
   CA_PASSWORD_FILE_IN_CONTAINER="/home/step/${CA_PASSWORD_FILE#${CA_DATA_DIR}/}"
@@ -119,6 +140,7 @@ do_ca() {
     docker compose up -d
   )
   normalize_ca_password_files
+  wait_for_ca_init
   configure_ca_service_cert_duration
   (
     cd "${WORKDIR}/step-ca"
