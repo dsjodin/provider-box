@@ -45,6 +45,11 @@ build_netbox_dns_seed_block() {
   local line fqdn address_value
   NETBOX_DNS_RECORDS=""
 
+  if [[ ! -f "${RECORDS_FILE}" ]]; then
+    export NETBOX_DNS_RECORDS
+    return
+  fi
+
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     [[ "$line" = \#* ]] && continue
@@ -558,8 +563,11 @@ SUMMARY
 do_netbox() {
   require_netbox_vars
   require_netbox_ca_vars
-  require_records_file
-  validate_records_file
+  if [[ -f "${RECORDS_FILE}" ]]; then
+    validate_records_file
+  else
+    echo "No custom DNS records file found at ${RECORDS_FILE}; skipping import. Copy config/unbound.records.example to config/unbound.records to add external/custom records."
+  fi
   common_pkgs
   docker_pkgs
   require_ca_ready_for_netbox

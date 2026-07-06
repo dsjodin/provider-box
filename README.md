@@ -48,13 +48,18 @@ The repository is intentionally simple: copy the example configuration, update v
 
 ```bash
 cp config/provider-box.env.example config/provider-box.env
+```
+
+Optionally, to publish external/custom DNS records (VCF nodes, gateways, and other non-Provider-Box hosts):
+
+```bash
 cp config/unbound.records.example config/unbound.records
 ```
 
 ### 2. Update configuration files
 
 - `config/provider-box.env` defines all service configuration
-- `config/unbound.records` defines external and custom DNS records only
+- `config/unbound.records` (optional) defines external and custom DNS records only
 
 Built-in Provider Box service FQDNs are generated automatically from values in `provider-box.env`. You do not add built-in service records to `config/unbound.records`.
 
@@ -216,6 +221,10 @@ Behavior:
 - If a record includes CIDR information, Provider Box can derive the surrounding subnet for NetBox
 - If a record includes only a plain IP, Provider Box imports the host address without guessing the subnet
 - Built-in Provider Box service records are generated automatically and should not be duplicated in `config/unbound.records`
+
+### DNS backend selection
+
+`DNS_BACKEND` selects which DNS server Provider Box deploys and must be exactly `unbound` (default, host-based, original behavior) or `technitium` (containerized, API-driven, fed from NetBox via dns-sync). Exactly one backend owns port 53: `--all` deploys only the selected backend, and running the flag for the other backend fails fast naming the configured one. `--dns-sync` requires `DNS_BACKEND=technitium`.
 
 ### Template rendering
 

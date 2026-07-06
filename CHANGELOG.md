@@ -10,7 +10,9 @@ All notable changes to this project will be documented in this file.
 - Add Authentik identity provider service module for VCF 9 identity federation with OIDC authentication and outbound SCIM 2.0 provisioning
 - Seed an opinionated Authentik bootstrap blueprint with one group, one lab user, one OIDC provider, and one VCF application
 - Set the Authentik brand web certificate to the discovered step-ca keypair after startup
-- Be sure to update your `config/provider-box.env`.
+- Add explicit DNS backend selection via `DNS_BACKEND` (`unbound` or `technitium`, default `unbound`): `--all` deploys only the selected backend, direct backend flags fail fast on a mismatch so the second DNS server cannot land on a converted host, and `--dns-sync` requires the technitium backend
+- Make `config/unbound.records` optional for NetBox: when absent, the import is skipped with a notice instead of failing (the file remains required by the unbound backend, which renders it)
+- Be sure to update your `config/provider-box.env` (new `DNS_BACKEND` variable).
 
 ### Fixes
 - Fix certificate issuance failing when the lab DNS zone does not resolve yet (for example while bootstrapping the DNS service itself) by pinning `CA_FQDN` to `127.0.0.1` via `--add-host` in the step-ca certificate issuance containers across all six certificate-consuming service modules, making issuance DNS-independent per the single-node design where step-ca always runs on the same host

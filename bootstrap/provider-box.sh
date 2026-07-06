@@ -439,6 +439,19 @@ require_dns_vars() {
   validate_var_ipv4 "${UNBOUND_FORWARDER}"
 }
 
+validate_dns_backend() {
+  [[ -n "${DNS_BACKEND:-}" ]] || fail "Missing required variable: DNS_BACKEND"
+  [[ "${DNS_BACKEND}" == "unbound" || "${DNS_BACKEND}" == "technitium" ]] || \
+    fail "DNS_BACKEND must be either unbound or technitium"
+}
+
+require_dns_backend() {
+  local wanted="$1"
+  validate_dns_backend
+  [[ "${DNS_BACKEND}" == "${wanted}" ]] || \
+    fail "This stage requires DNS_BACKEND=${wanted}, but DNS_BACKEND=${DNS_BACKEND} is configured. Only one DNS backend can own port 53."
+}
+
 require_ntp_vars() {
   local var
   for var in CHRONY_SERVER_1 CHRONY_SERVER_2 CHRONY_SERVER_3; do
@@ -561,6 +574,7 @@ case "${TARGET_SERVICE}" in
     if [[ "${REMOVE_MODE}" -eq 1 ]]; then
       fail "Removal is not implemented for --unbound"
     fi
+    require_dns_backend "unbound"
     require_common_vars
     require_allow_net_vars
     require_dns_vars
@@ -663,6 +677,7 @@ case "${TARGET_SERVICE}" in
     if [[ "${REMOVE_MODE}" -eq 1 ]]; then
       remove_technitium
     else
+      require_dns_backend "technitium"
       require_common_vars
       do_technitium
     fi
@@ -673,6 +688,7 @@ case "${TARGET_SERVICE}" in
     if [[ "${REMOVE_MODE}" -eq 1 ]]; then
       remove_dns_sync
     else
+      require_dns_backend "technitium"
       require_common_vars
       do_dns_sync
     fi
@@ -690,11 +706,19 @@ case "${TARGET_SERVICE}" in
       remove_ca
     else
       require_env_vars
-      require_records_file
-      do_unbound
+      validate_dns_backend
+      if [[ "${DNS_BACKEND}" == "unbound" ]]; then
+        require_records_file
+        do_unbound
+      fi
       do_ntp
       do_rsyslog
       do_ca
+      # Technitium depends on step-ca for its certificate, so with
+      # DNS_BACKEND=technitium the DNS stage runs after the CA is up.
+      if [[ "${DNS_BACKEND}" == "technitium" ]]; then
+        do_technitium
+      fi
       do_depot
       do_keycloak
       do_authentik
