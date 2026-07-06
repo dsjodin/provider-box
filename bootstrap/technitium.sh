@@ -158,6 +158,80 @@ render_technitium_stack() {
   render_template "${TEMPLATE_DIR}/docker-compose.technitium.yml.tpl" "${WORKDIR}/technitium/docker-compose.yml"
 }
 
+# Deploying --technitium is the explicit opt-in to running DNS on this host:
+# the module takes port 53 deliberately, which requires disabling the
+# systemd-resolved stub listener on stock Ubuntu. Host resolution is verified
+# before and after every transition so bootstrap never proceeds with broken
+# DNS. --technitium --remove restores the stock configuration.
+
+TECHNITIUM_RESOLVED_DROPIN="/etc/systemd/resolved.conf.d/provider-box.conf"
+TECHNITIUM_RESOLV_CONF_MARKER="Managed by Provider Box (--technitium)"
+
+verify_host_resolution() {
+  local context="$1"
+  getent hosts deb.debian.org >/dev/null || \
+    fail "Host DNS resolution is broken ${context}. Fix /etc/resolv.conf before re-running --technitium."
+}
+
+disable_resolved_stub_listener() {
+  echo "Disabling the systemd-resolved DNS stub listener so Technitium can bind port 53."
+  install -d -m 0755 /etc/systemd/resolved.conf.d
+  cat > "${TECHNITIUM_RESOLVED_DROPIN}" <<CONF
+# ${TECHNITIUM_RESOLV_CONF_MARKER}. Removed by --technitium --remove.
+[Resolve]
+DNSStubListener=no
+CONF
+
+  # Keep /etc/resolv.conf functional through the transition: the stub file
+  # points at 127.0.0.53, which stops answering once the stub listener is off.
+  if [[ -L /etc/resolv.conf && "$(readlink /etc/resolv.conf)" == *stub-resolv.conf ]]; then
+    ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+  fi
+
+  systemctl restart systemd-resolved || fail "Failed to restart systemd-resolved."
+  verify_host_resolution "after disabling the systemd-resolved stub listener"
+}
+
+preflight_technitium_port_53() {
+  local listeners
+
+  require_command ss
+  listeners="$(ss -H -lntup 'sport = :53' 2>/dev/null || true)"
+  [[ -n "${listeners}" ]] || return 0
+
+  if grep -q "systemd-resolve" <<< "${listeners}"; then
+    disable_resolved_stub_listener
+    listeners="$(ss -H -lntup 'sport = :53' 2>/dev/null || true)"
+  fi
+
+  [[ -z "${listeners}" ]] || fail "Port 53 is already in use and Provider Box will not stop the holder automatically. Stop the conflicting service (for example a leftover unbound or dnsmasq) and re-run --technitium. Current listeners:
+${listeners}"
+}
+
+point_host_resolver_at_technitium() {
+  echo "Pointing the host resolver at Technitium (127.0.0.1)."
+  rm -f /etc/resolv.conf
+  cat > /etc/resolv.conf <<RESOLV
+# ${TECHNITIUM_RESOLV_CONF_MARKER}. Removed by --technitium --remove.
+nameserver 127.0.0.1
+search ${SEARCH_DOMAIN}
+RESOLV
+  verify_host_resolution "after pointing /etc/resolv.conf at Technitium"
+}
+
+restore_host_resolver() {
+  [[ -f "${TECHNITIUM_RESOLVED_DROPIN}" ]] || return 0
+
+  echo "Restoring the systemd-resolved stub listener and /etc/resolv.conf."
+  rm -f "${TECHNITIUM_RESOLVED_DROPIN}"
+  if grep -qs "${TECHNITIUM_RESOLV_CONF_MARKER}" /etc/resolv.conf || \
+     [[ "$(readlink /etc/resolv.conf 2>/dev/null)" == "/run/systemd/resolve/resolv.conf" ]]; then
+    ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+  fi
+  systemctl restart systemd-resolved || fail "Failed to restart systemd-resolved."
+  verify_host_resolution "after restoring systemd-resolved"
+}
+
 verify_technitium_dns_listener() {
   local attempt
   echo "Waiting for Technitium DNS listener on 127.0.0.1:53."
@@ -182,6 +256,10 @@ do_technitium() {
   (
     cd "${WORKDIR}/technitium"
     docker compose down || true
+  )
+  preflight_technitium_port_53
+  (
+    cd "${WORKDIR}/technitium"
     docker compose up -d
   )
   ufw allow 53/tcp || true
@@ -189,6 +267,7 @@ do_technitium() {
   ufw allow "${TECHNITIUM_HTTP_PORT}/tcp" || true
   ufw allow "${TECHNITIUM_HTTPS_PORT}/tcp" || true
   verify_technitium_dns_listener
+  point_host_resolver_at_technitium
   echo "Technitium is ready. Web console: http://${DNS_FQDN}:${TECHNITIUM_HTTP_PORT}"
   echo "Step-ca-issued certificate is mounted at /etc/provider-box/technitium-certs inside the container."
   echo "Capture the API token from the console before enabling seed apply or dns-sync."
@@ -209,5 +288,6 @@ remove_technitium() {
   fi
 
   rm -rf "${runtime_dir}"
+  restore_host_resolver
   echo "Removed Technitium containers and runtime files under ${runtime_dir}. Persistent data in ${TECHNITIUM_DATA_DIR} and certificates in ${TECHNITIUM_CERT_DIR} were preserved."
 }
