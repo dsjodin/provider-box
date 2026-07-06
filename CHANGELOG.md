@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## 2026-07-06
+
+### Features
+- Add Authentik identity provider service module for VCF 9 identity federation with OIDC authentication and outbound SCIM 2.0 provisioning
+- Seed an opinionated Authentik bootstrap blueprint with one group, one lab user, one OIDC provider, and one VCF application
+- Set the Authentik brand web certificate to the discovered step-ca keypair after startup
+- Be sure to update your `config/provider-box.env`.
+
 ## 2026-04-27
 
 ### Improvements

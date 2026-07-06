@@ -10,13 +10,14 @@ It is designed for lab and proof-of-concept environments, especially VMware Clou
 - step-ca for a lightweight private certificate authority
 - VCF offline depot served by nginx
 - Keycloak for identity
+- Authentik for identity federation with OIDC and outbound SCIM 2.0 provisioning
 - NetBox for IPAM, DCIM, and infrastructure source-of-truth
 - SeaweedFS for S3-compatible object storage
 - SFTPGo for SFTP file transfer
 
 The repository is intentionally simple: copy the example configuration, update values for your environment, and run the bootstrap script for the services you need.
 
-`bootstrap/provider-box.sh` is the entrypoint. It loads service-specific modules from `bootstrap/dns.sh`, `bootstrap/ntp.sh`, `bootstrap/rsyslog.sh`, `bootstrap/ca.sh`, `bootstrap/depot.sh`, `bootstrap/keycloak.sh`, `bootstrap/netbox.sh`, `bootstrap/s3.sh`, and `bootstrap/sftp.sh`.
+`bootstrap/provider-box.sh` is the entrypoint. It loads service-specific modules from `bootstrap/dns.sh`, `bootstrap/ntp.sh`, `bootstrap/rsyslog.sh`, `bootstrap/ca.sh`, `bootstrap/depot.sh`, `bootstrap/keycloak.sh`, `bootstrap/authentik.sh`, `bootstrap/netbox.sh`, `bootstrap/s3.sh`, and `bootstrap/sftp.sh`.
 
 ## Overview
 
@@ -81,6 +82,7 @@ sudo bash bootstrap/provider-box.sh --rsyslog
 sudo bash bootstrap/provider-box.sh --ca
 sudo bash bootstrap/provider-box.sh --depot
 sudo bash bootstrap/provider-box.sh --keycloak
+sudo bash bootstrap/provider-box.sh --authentik
 sudo bash bootstrap/provider-box.sh --netbox
 sudo bash bootstrap/provider-box.sh --s3
 sudo bash bootstrap/provider-box.sh --sftp
@@ -119,6 +121,7 @@ Provider Box uses Docker Compose via `docker compose`. On Debian GNU/Linux 13, t
 ### Optional depending on use case
 
 - SeaweedFS for S3-compatible storage
+- Authentik as an alternative identity provider when OIDC plus outbound SCIM 2.0 provisioning is required (for example VCF 9 identity federation)
 
 Services are intended to remain independently deployable unless a dependency is explicit and documented.
 
@@ -141,6 +144,7 @@ Provider Box uses a mixed runtime model. Host-based services modify the local sy
 | step-ca  | Docker Compose |
 | VCF offline depot | Docker Compose |
 | Keycloak | Docker Compose |
+| Authentik | Docker Compose |
 | NetBox   | Docker Compose |
 | SeaweedFS (S3) | Docker Compose |
 | SFTPGo   | Docker Compose |
@@ -329,6 +333,30 @@ Realm bootstrap:
 - Seeds initial realm state only; it does not provide a generic realm-management framework
 - Changes to the realm template are only applied on initial bootstrap; existing realms are not reconciled or modified on subsequent runs
 
+### Authentik
+
+- Runs via Docker Compose with Authentik server, Authentik worker, and PostgreSQL
+- Requires step-ca to be initialized first
+- Intended for VMware Cloud Foundation 9 identity federation with OIDC authentication and outbound SCIM 2.0 provisioning (which Keycloak lacks)
+- Runs in parallel with Keycloak on separate FQDNs and ports when both are deployed (including via `--all`); federate VCF against one of them, using Authentik when SCIM provisioning is required
+- Exposed at `https://<AUTHENTIK_FQDN>:<AUTHENTIK_PORT>` (`9443` by default)
+- Persists application data under `${AUTHENTIK_DIR}/data` and PostgreSQL data under `${AUTHENTIK_DIR}/postgres`
+- Uses a step-ca-issued certificate stored under `${AUTHENTIK_DIR}/certs/<AUTHENTIK_FQDN>` as `fullchain.pem` and `privkey.pem`, picked up by Authentik's built-in certificate discovery
+- Bootstraps the `akadmin` password from `AUTHENTIK_ADMIN_PASSWORD` and an API token from `AUTHENTIK_API_TOKEN` on first start
+- Seeds an opinionated bootstrap blueprint on startup: one group, one lab user, one OIDC provider (`vcf-oidc`), and one hidden `VCF` application for VCF-style integration
+- Sets the default brand web certificate to the discovered step-ca keypair after startup
+- OIDC discovery is served at `https://<AUTHENTIK_FQDN>:<AUTHENTIK_PORT>/application/o/vcf/.well-known/openid-configuration`
+
+Blueprint bootstrap:
+
+- Seeds initial state only; existing objects are not overwritten in ways that discard operator changes (the bootstrap user is created once and left alone afterwards)
+- Changes to bootstrap client settings in `provider-box.env` are re-applied to the provider on subsequent runs
+
+VCF integration notes:
+
+- Import `${CA_DATA_DIR}/certs/root_ca.crt` into VCF's trusted certificate authorities
+- After configuring the VCF Identity Broker, create the SCIM provider in Authentik manually using the SCIM base URL and bearer token that VCF generates, and assign it as the backchannel provider on the `VCF` application. The SCIM URL and token only exist after the VCF side is configured, so this step is not automated.
+
 ### NetBox
 
 - Runs via Docker Compose with NetBox, PostgreSQL, Redis, and a small HTTPS terminator
@@ -478,6 +506,7 @@ It is opinionated for labs and PoCs, not for HA production deployment patterns.
 
 ```text
 bootstrap/
+  authentik.sh
   ca.sh
   depot.sh
   dns.sh
@@ -500,6 +529,8 @@ templates/
   docker-compose.step-ca.yml.tpl
   docker-compose.depot.yml.tpl
   docker-compose.keycloak.yml.tpl
+  docker-compose.authentik.yml.tpl
+  authentik-blueprint.yaml.tpl
   docker-compose.netbox.yml.tpl
   docker-compose.s3.yml.tpl
   docker-compose.sftpgo.yml.tpl

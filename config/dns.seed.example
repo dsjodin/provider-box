@@ -1,0 +1,35 @@
+# config/dns.seed.example
+# Bring-up seed records for Technitium DNS.
+#
+# This file is a first-deploy convenience: at bootstrap it is applied directly
+# into Technitium so DNS works immediately, and imported into NetBox so the
+# ongoing NetBox -> Technitium reconcile sees the same records as desired state.
+#
+# After bring-up, NetBox is the source of truth. Editing this file later and
+# expecting reconcile to honor it will not work - reconcile reflects NetBox.
+# Re-applying the seed on a later deploy is safe (idempotent) but the canonical
+# place to change records post-bootstrap is NetBox.
+#
+# Built-in Provider Box service records (DNS, CA, Keycloak, NetBox, S3, SFTP,
+# Syslog) are generated automatically from config/provider-box.env and must NOT
+# be added here. Use this file only for external infrastructure (VCF nodes,
+# gateways, vCenter, ESXi, etc.).
+#
+# Format:
+# <fqdn> <ip>
+# <fqdn> <ip/cidr>
+#
+# If you specify <ip/cidr>, Provider Box can derive the surrounding subnet and
+# seed a NetBox prefix object in addition to an IP address object using the
+# same subnet mask. The CIDR also drives reverse-zone selection for PTRs.
+#
+# If you specify only <ip>, Provider Box imports the host IP as /32 and does
+# not guess the subnet.
+#
+# PTR records are generated automatically by the seed applier.
+
+host32.sddc.lab 10.203.5.32/24
+pod-240-vc01.sddc.lab 10.203.240.10/24
+pod-240-nsx.sddc.lab 10.203.240.11/24
+pod-240-ops.sddc.lab 10.203.240.13/24
+pod-240-sddcm.sddc.lab 10.203.240.16/24
