@@ -164,12 +164,17 @@ rsyslog_pkgs() {
 
 docker_pkgs() {
   apt_update_once
-  install_pkg docker.io docker-compose
+  install_pkg docker.io
+  # docker-compose-v2 is the compose package name on Ubuntu 22.04+. It is
+  # verified by capability below instead of by package name, because apt may
+  # resolve transitional names differently across releases.
+  DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-v2 || \
+    fail "Failed to install packages: docker-compose-v2"
   require_command docker
   systemctl enable docker
   systemctl start docker
   docker compose version >/dev/null 2>&1 || \
-    fail "Docker Compose v2 is required but not available via 'docker compose'"
+    fail "docker compose v2 is required but not available. Install docker-compose-v2 (Ubuntu 22.04+) or docker-compose-plugin from Docker's official apt repository."
 }
 
 configure_resolv_conf() {
