@@ -10,9 +10,11 @@ require_dns_sync_vars() {
   local var
   for var in WORKDIR REPO_ROOT DNS_SYNC_IMAGE DNS_SYNC_DIR DNS_SYNC_SECRETS_DIR \
              DNS_SYNC_NETBOX_URL DNS_SYNC_TECHNITIUM_URL DNS_SYNC_INTERVAL \
-             CA_DATA_DIR; do
+             PROVIDER_BOX_FQDN CA_DATA_DIR; do
     [[ -n "${!var:-}" ]] || fail "Missing required variable: $var"
   done
+
+  validate_var_fqdn "${PROVIDER_BOX_FQDN}"
 
   validate_var_path "${WORKDIR}"
   validate_var_path "${DNS_SYNC_DIR}"
@@ -59,22 +61,52 @@ require_ca_root_for_dns_sync() {
     fail "Missing step-ca root certificate in ${CA_DATA_DIR}/certs/root_ca.crt. Run --ca first."
 }
 
+dns_sync_url_host() {
+  local u="${1#*://}"
+  u="${u%%/*}"
+  printf '%s' "${u%%:*}"
+}
+
+dns_sync_url_port() {
+  local url="$1"
+  local u="${url#*://}"
+  u="${u%%/*}"
+  if [[ "${u}" == *:* ]]; then
+    printf '%s' "${u##*:}"
+  elif [[ "${url}" == https://* ]]; then
+    printf '443'
+  else
+    printf '80'
+  fi
+}
+
+# The lab FQDNs in DNS_SYNC_*_URL are served by the zone dns-sync itself
+# populates, so nothing bootstrap-phase may depend on resolving them. Both
+# gates pin the FQDN to 127.0.0.1 (single-node design) with curl --resolve,
+# the same idiom as the netbox module's own readiness wait. TLS verification
+# stays full against the lab root.
 require_netbox_ready_for_dns_sync() {
-  local code
+  local code host port
+  host="$(dns_sync_url_host "${DNS_SYNC_NETBOX_URL}")"
+  port="$(dns_sync_url_port "${DNS_SYNC_NETBOX_URL}")"
   code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 5 \
     --cacert "${CA_DATA_DIR}/certs/root_ca.crt" \
+    --resolve "${host}:${port}:127.0.0.1" \
     "${DNS_SYNC_NETBOX_URL}/api/" || echo 000)
   [[ "${code}" == "200" || "${code}" == "401" || "${code}" == "403" ]] || \
-    fail "NetBox at ${DNS_SYNC_NETBOX_URL} is not reachable (got ${code}). Run --netbox first."
+    fail "NetBox at ${DNS_SYNC_NETBOX_URL} is not reachable on 127.0.0.1 (got ${code}). Run --netbox first."
 }
 
 require_technitium_ready_for_dns_sync() {
-  local code
+  local code host port
+  host="$(dns_sync_url_host "${DNS_SYNC_TECHNITIUM_URL}")"
+  port="$(dns_sync_url_port "${DNS_SYNC_TECHNITIUM_URL}")"
   code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 5 \
     --cacert "${CA_DATA_DIR}/certs/root_ca.crt" \
+    --resolve "${host}:${port}:127.0.0.1" \
     "${DNS_SYNC_TECHNITIUM_URL}/" || echo 000)
   [[ "${code}" == "200" || "${code}" == "301" || "${code}" == "302" ]] || \
-    fail "Technitium at ${DNS_SYNC_TECHNITIUM_URL} is not reachable (got ${code}). Run --technitium first."
+    fail "Technitium at ${DNS_SYNC_TECHNITIUM_URL} is not reachable on 127.0.0.1 (got ${code}). Run --technitium first."
 }
 
 bootstrap_dns_sync_layout() {
@@ -100,6 +132,7 @@ apply_dns_seed_to_netbox() {
   echo "Importing config/dns.seed into NetBox (idempotent)"
   docker run --rm \
     --user 1000:1000 \
+    --add-host "$(dns_sync_url_host "${DNS_SYNC_NETBOX_URL}"):127.0.0.1" \
     -e NETBOX_URL="${DNS_SYNC_NETBOX_URL}" \
     -e NETBOX_TOKEN_FILE="/run/provider-box/secrets/netbox.token" \
     -e NETBOX_CA_BUNDLE="/etc/provider-box/certs/root_ca.crt" \
@@ -120,6 +153,7 @@ apply_technitium_forwarder() {
   echo "Setting Technitium upstream forwarder: ${TECHNITIUM_FORWARDER}"
   docker run --rm \
     --user 1000:1000 \
+    --add-host "$(dns_sync_url_host "${DNS_SYNC_TECHNITIUM_URL}"):127.0.0.1" \
     -e TECHNITIUM_URL="${DNS_SYNC_TECHNITIUM_URL}" \
     -e TECHNITIUM_TOKEN_FILE="/run/provider-box/secrets/technitium.token" \
     -e TECHNITIUM_CA_BUNDLE="/etc/provider-box/certs/root_ca.crt" \
@@ -133,6 +167,9 @@ apply_technitium_forwarder() {
 }
 
 render_dns_sync_stack() {
+  DNS_SYNC_NETBOX_HOST="$(dns_sync_url_host "${DNS_SYNC_NETBOX_URL}")"
+  DNS_SYNC_TECHNITIUM_HOST="$(dns_sync_url_host "${DNS_SYNC_TECHNITIUM_URL}")"
+  export DNS_SYNC_NETBOX_HOST DNS_SYNC_TECHNITIUM_HOST
   render_template "${TEMPLATE_DIR}/docker-compose.dns-sync.yml.tpl" "${WORKDIR}/dns-sync/docker-compose.yml"
 }
 
@@ -147,6 +184,23 @@ verify_dns_sync_running() {
     sleep 2
   done
   fail "dns-sync container did not enter running state. Check 'docker compose logs' under ${WORKDIR}/dns-sync."
+}
+
+# Unlike the pinned bootstrap gates above, this check deliberately uses real
+# DNS: after the first reconcile the lab zone must be served by Technitium,
+# which is exactly the output dns-sync exists to produce.
+verify_dns_sync_zone() {
+  local attempt
+  require_command dig
+  echo "Verifying dns-sync populated the lab zone (dig @127.0.0.1 ${PROVIDER_BOX_FQDN})."
+  for attempt in $(seq 1 45); do
+    if [[ -n "$(dig +short +time=2 +tries=1 @127.0.0.1 -p 53 "${PROVIDER_BOX_FQDN}" A 2>/dev/null)" ]]; then
+      echo "dns-sync populated the zone: ${PROVIDER_BOX_FQDN} resolves via Technitium."
+      return 0
+    fi
+    sleep 2
+  done
+  fail "dns-sync did not populate the lab zone: no A record for ${PROVIDER_BOX_FQDN} via 127.0.0.1. Check 'docker compose logs' under ${WORKDIR}/dns-sync and confirm NetBox holds the canonical host IP (run --netbox)."
 }
 
 do_dns_sync() {
@@ -168,6 +222,7 @@ do_dns_sync() {
     docker compose up -d
   )
   verify_dns_sync_running
+  verify_dns_sync_zone
   echo "dns-sync is running. Reconcile interval: ${DNS_SYNC_INTERVAL}."
   echo "Logs: docker compose -f ${WORKDIR}/dns-sync/docker-compose.yml logs -f"
 }

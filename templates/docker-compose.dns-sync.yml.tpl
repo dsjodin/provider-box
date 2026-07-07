@@ -3,6 +3,9 @@ services:
     image: ${DNS_SYNC_IMAGE}
     restart: unless-stopped
     user: "1000:1000"
+    extra_hosts:
+      - "${DNS_SYNC_NETBOX_HOST}:127.0.0.1"
+      - "${DNS_SYNC_TECHNITIUM_HOST}:127.0.0.1"
     environment:
       NETBOX_URL: "${DNS_SYNC_NETBOX_URL}"
       NETBOX_TOKEN_FILE: "/run/provider-box/secrets/netbox.token"
