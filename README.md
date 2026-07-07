@@ -228,6 +228,8 @@ Behavior:
 
 Both backends forward external queries to `DNS_FORWARDER` (falling back to `UNBOUND_FORWARDER` when unset, for backward compatibility). Technitium applies its default recursion policy, which serves RFC1918 (private) client networks; if the lab uses non-RFC1918 ranges, adjust the recursion access control list in the Technitium console so those clients can resolve.
 
+Built-in Provider Box service records are generated automatically from the `*_FQDN` values in `provider-box.env` under both backends, from one shared list: the unbound backend renders them into its resolver configuration, while the technitium backend has dns-sync synthesize them into the desired record set on every reconcile. They are not stored in NetBox, which enforces global IP uniqueness and holds a single canonical host IP object (`PROVIDER_BOX_FQDN`); that object also remains the reverse PTR target for the host IP.
+
 ### Template rendering
 
 Environment variables are exported before template rendering so `envsubst` can populate the service templates consistently.

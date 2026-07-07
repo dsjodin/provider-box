@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - Be sure to update your `config/provider-box.env` (new `DNS_BACKEND` and `DNS_FORWARDER` variables).
 
 ### Fixes
+- Fix built-in Provider Box service FQDNs (netbox, ca, dns, auth, idp, ...) never reaching the Technitium zone: dns-sync now synthesizes their A records from `provider-box.env` on every reconcile, using the same built-in list as the unbound backend (`provider_box_builtin_fqdns`, which now also covers `AUTHENTIK_FQDN` and skips unset services); they are deliberately not seeded into NetBox because the pinned NetBox enforces global IP uniqueness (verified live: duplicate host-IP objects are rejected without anycast roles), and A-only synthesis keeps `PROVIDER_BOX_FQDN` as the sole PTR target; the post-deploy zone verification now checks every built-in FQDN resolves via Technitium
 - Fix the long-running dns-sync container failing every reconcile with "connection refused": the `127.0.0.1` extra_hosts pins pointed at the container's own loopback on the default bridge network; the service now runs with `network_mode: host`, matching the module's one-shot docker runs
 - Remove the Technitium forwarder step from `--dns-sync`, which silently overwrote the `DNS_FORWARDER` value the technitium module sets and verifies (one owner per setting); the unused `TECHNITIUM_FORWARDER` variable is removed from the example env
 - Include the NetBox response body (about 200 characters) in dns-sync client errors on non-2xx responses so failures like 403 are diagnosable from logs

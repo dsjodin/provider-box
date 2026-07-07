@@ -4,17 +4,72 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
+	"net/netip"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/dsjodin/provider-box/services/dns-sync/internal/model"
 	"github.com/dsjodin/provider-box/services/dns-sync/internal/netbox"
 	"github.com/dsjodin/provider-box/services/dns-sync/internal/reconcile"
 	"github.com/dsjodin/provider-box/services/dns-sync/internal/technitium"
 )
+
+// sourceWithBuiltins appends the built-in Provider Box service records to the
+// NetBox-derived desired set on every pass. The built-ins cannot live in
+// NetBox as separate IP objects (global IP uniqueness allows only the one
+// canonical host IP object), so they are synthesized from the environment.
+// A records only: the host IP's PTR stays the NetBox-derived canonical
+// PROVIDER_BOX_FQDN, and service FQDNs must not be PTR targets.
+type sourceWithBuiltins struct {
+	base     reconcile.Source
+	builtins []model.Record
+}
+
+func (s *sourceWithBuiltins) Desired(ctx context.Context) ([]model.Record, error) {
+	desired, err := s.base.Desired(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return append(desired, s.builtins...), nil
+}
+
+// parseBuiltinRecords parses "fqdn=ipv4,fqdn=ipv4" into A records.
+func parseBuiltinRecords(v string) ([]model.Record, error) {
+	if v == "" {
+		return nil, nil
+	}
+	var out []model.Record
+	for _, pair := range strings.Split(v, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		fqdn, ip, ok := strings.Cut(pair, "=")
+		if !ok {
+			return nil, fmt.Errorf("builtin record %q: expected fqdn=ip", pair)
+		}
+		addr, err := netip.ParseAddr(ip)
+		if err != nil || !addr.Is4() {
+			return nil, fmt.Errorf("builtin record %q: invalid IPv4 address", pair)
+		}
+		name := model.NormalizeFQDN(fqdn)
+		if name == "" {
+			return nil, fmt.Errorf("builtin record %q: empty FQDN", pair)
+		}
+		out = append(out, model.Record{
+			Zone: model.ForwardZoneFor(name),
+			Name: name,
+			Type: "A",
+			Data: addr.String(),
+		})
+	}
+	return out, nil
+}
 
 func main() {
 	netboxURL := flag.String("netbox-url", os.Getenv("NETBOX_URL"), "NetBox base URL")
@@ -26,6 +81,7 @@ func main() {
 	techTokenFile := flag.String("technitium-token-file", os.Getenv("TECHNITIUM_TOKEN_FILE"), "Path to file containing the Technitium API token")
 	techCABundle := flag.String("technitium-ca-bundle", os.Getenv("TECHNITIUM_CA_BUNDLE"), "Optional PEM bundle for Technitium TLS")
 	interval := flag.Duration("interval", envDuration("DNS_SYNC_INTERVAL", 30*time.Second), "Reconcile interval")
+	builtinRecords := flag.String("builtin-records", os.Getenv("DNS_SYNC_BUILTIN_RECORDS"), "Comma-separated fqdn=ipv4 built-in service records merged into the desired set")
 	dryRun := flag.Bool("dry-run", false, "Log the diff via LogTarget instead of writing to Technitium")
 	once := flag.Bool("once", false, "Run a single reconcile pass and exit")
 	flag.Parse()
@@ -44,6 +100,17 @@ func main() {
 	if err != nil {
 		logger.Error("init netbox client", "err", err)
 		os.Exit(1)
+	}
+
+	var source reconcile.Source = nb
+	builtins, err := parseBuiltinRecords(*builtinRecords)
+	if err != nil {
+		logger.Error("parse builtin records", "err", err)
+		os.Exit(1)
+	}
+	if len(builtins) > 0 {
+		source = &sourceWithBuiltins{base: nb, builtins: builtins}
+		logger.Info("built-in service records merged into desired set", "count", len(builtins))
 	}
 
 	var target reconcile.Target
@@ -66,7 +133,7 @@ func main() {
 	}
 
 	r := &reconcile.Reconciler{
-		Source:   nb,
+		Source:   source,
 		Target:   target,
 		Interval: *interval,
 		Logger:   logger,

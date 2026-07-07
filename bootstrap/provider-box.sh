@@ -204,17 +204,25 @@ local-data-ptr: \"${ip} ${fqdn}\"
   export DNS_RECORD_BLOCK
 }
 
+# Single source of truth for the built-in Provider Box service FQDNs, consumed
+# by both DNS backends: the unbound config render and the dns-sync built-in
+# record synthesis. Prints one FQDN per line; unset services are skipped.
+provider_box_builtin_fqdns() {
+  local var
+  for var in PROVIDER_BOX_FQDN DNS_FQDN CA_FQDN DEPOT_FQDN KEYCLOAK_FQDN AUTHENTIK_FQDN NETBOX_FQDN S3_FQDN SFTP_FQDN SYSLOG_FQDN; do
+    [[ -n "${!var:-}" ]] && printf '%s\n' "${!var}"
+  done
+  return 0
+}
+
 build_provider_box_dns_block() {
-  PROVIDER_BOX_DNS_BLOCK="local-data: \"${PROVIDER_BOX_FQDN} A ${HOST_IPV4}\"
-local-data: \"${DNS_FQDN} A ${HOST_IPV4}\"
-local-data: \"${CA_FQDN} A ${HOST_IPV4}\"
-local-data: \"${DEPOT_FQDN} A ${HOST_IPV4}\"
-local-data: \"${KEYCLOAK_FQDN} A ${HOST_IPV4}\"
-local-data: \"${NETBOX_FQDN} A ${HOST_IPV4}\"
-local-data: \"${S3_FQDN} A ${HOST_IPV4}\"
-local-data: \"${SFTP_FQDN} A ${HOST_IPV4}\"
-local-data: \"${SYSLOG_FQDN} A ${HOST_IPV4}\"
-local-data-ptr: \"${HOST_IPV4} ${PROVIDER_BOX_FQDN}\"
+  local fqdn
+  PROVIDER_BOX_DNS_BLOCK=""
+  while IFS= read -r fqdn; do
+    PROVIDER_BOX_DNS_BLOCK="${PROVIDER_BOX_DNS_BLOCK}local-data: \"${fqdn} A ${HOST_IPV4}\"
+"
+  done < <(provider_box_builtin_fqdns)
+  PROVIDER_BOX_DNS_BLOCK="${PROVIDER_BOX_DNS_BLOCK}local-data-ptr: \"${HOST_IPV4} ${PROVIDER_BOX_FQDN}\"
 "
   export PROVIDER_BOX_DNS_BLOCK
 }

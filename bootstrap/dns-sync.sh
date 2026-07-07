@@ -145,10 +145,26 @@ apply_dns_seed_to_netbox() {
     fail "Failed to import dns.seed into NetBox"
 }
 
+# Built-in Provider Box service FQDNs cannot live in NetBox as separate IP
+# objects (NetBox enforces global IP uniqueness; the canonical host IP is one
+# object with PROVIDER_BOX_FQDN as dns_name), so dns-sync synthesizes their A
+# records from the environment on every reconcile pass. Same list as the
+# unbound backend, via provider_box_builtin_fqdns.
+build_dns_sync_builtin_records() {
+  local fqdn records=""
+  while IFS= read -r fqdn; do
+    records="${records:+${records},}${fqdn}=${HOST_IPV4}"
+  done < <(provider_box_builtin_fqdns)
+  [[ -n "${records}" ]] || fail "No built-in service FQDNs are set; check the *_FQDN variables in provider-box.env."
+  DNS_SYNC_BUILTIN_RECORDS="${records}"
+  export DNS_SYNC_BUILTIN_RECORDS
+}
+
 render_dns_sync_stack() {
   DNS_SYNC_NETBOX_HOST="$(dns_sync_url_host "${DNS_SYNC_NETBOX_URL}")"
   DNS_SYNC_TECHNITIUM_HOST="$(dns_sync_url_host "${DNS_SYNC_TECHNITIUM_URL}")"
   export DNS_SYNC_NETBOX_HOST DNS_SYNC_TECHNITIUM_HOST
+  build_dns_sync_builtin_records
   render_template "${TEMPLATE_DIR}/docker-compose.dns-sync.yml.tpl" "${WORKDIR}/dns-sync/docker-compose.yml"
 }
 
@@ -175,11 +191,31 @@ verify_dns_sync_zone() {
   for attempt in $(seq 1 45); do
     if [[ -n "$(dig +short +time=2 +tries=1 @127.0.0.1 -p 53 "${PROVIDER_BOX_FQDN}" A 2>/dev/null)" ]]; then
       echo "dns-sync populated the zone: ${PROVIDER_BOX_FQDN} resolves via Technitium."
+      verify_dns_sync_builtin_records
       return 0
     fi
     sleep 2
   done
   fail "dns-sync did not populate the lab zone: no A record for ${PROVIDER_BOX_FQDN} via 127.0.0.1. Check 'docker compose logs' under ${WORKDIR}/dns-sync and confirm NetBox holds the canonical host IP (run --netbox)."
+}
+
+# The built-ins land in the same reconcile pass as the canonical host record,
+# so once PROVIDER_BOX_FQDN resolves the rest should follow immediately.
+verify_dns_sync_builtin_records() {
+  local fqdn attempt resolved
+  while IFS= read -r fqdn; do
+    resolved=""
+    for attempt in $(seq 1 15); do
+      if [[ -n "$(dig +short +time=2 +tries=1 @127.0.0.1 -p 53 "${fqdn}" A 2>/dev/null)" ]]; then
+        resolved=1
+        break
+      fi
+      sleep 2
+    done
+    [[ -n "${resolved}" ]] || \
+      fail "Built-in service record ${fqdn} does not resolve via Technitium. Check 'docker compose logs' under ${WORKDIR}/dns-sync."
+  done < <(provider_box_builtin_fqdns)
+  echo "All built-in Provider Box service FQDNs resolve via Technitium."
 }
 
 do_dns_sync() {

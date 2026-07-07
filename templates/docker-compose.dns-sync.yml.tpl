@@ -18,6 +18,7 @@ services:
       TECHNITIUM_TOKEN_FILE: "/run/provider-box/secrets/technitium.token"
       TECHNITIUM_CA_BUNDLE: "/etc/provider-box/certs/root_ca.crt"
       DNS_SYNC_INTERVAL: "${DNS_SYNC_INTERVAL}"
+      DNS_SYNC_BUILTIN_RECORDS: "${DNS_SYNC_BUILTIN_RECORDS}"
     volumes:
       - ${DNS_SYNC_SECRETS_DIR}:/run/provider-box/secrets:ro
       - ${CA_DATA_DIR}/certs/root_ca.crt:/etc/provider-box/certs/root_ca.crt:ro
