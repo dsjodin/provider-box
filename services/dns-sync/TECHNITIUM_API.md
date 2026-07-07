@@ -239,6 +239,33 @@ previous value is preserved. To explicitly clear forwarders, look up the
 upstream's "clear" mechanism per Technitium docs (not needed by dns-sync,
 which always sets a non-empty value).
 
+### Web service TLS (verified against 13.4.2)
+
+The console/API HTTPS listener is disabled by default and is enabled via
+the same `settings/set` endpoint:
+
+```
+GET /api/settings/set?token=<TOKEN>
+      &webServiceEnableTls=true
+      &webServiceTlsPort=53443
+      &webServiceTlsCertificatePath=<container path to .pfx>
+      &webServiceTlsCertificatePassword=<pfx password>
+```
+
+The certificate must be **PKCS#12** (`.pfx`); PEM is not accepted for
+`webServiceTlsCertificatePath`. Convert with:
+
+```
+openssl pkcs12 -export -in chain.pem -inkey key.pem -out technitium.pfx -passout pass:<pw>
+```
+
+The TLS listener comes up within a few seconds of the `settings/set` call -
+no restart needed. Related fields visible in `settings/get`:
+`webServiceEnableTls`, `webServiceTlsPort` (default 53443),
+`webServiceTlsCertificatePath`, `webServiceTlsCertificatePassword`
+(masked as `************` on read), `webServiceUseSelfSignedTlsCertificate`,
+`webServiceHttpToTlsRedirect`.
+
 ## 5. Differences from technitium-dns_design.md sec 3
 
 The design doc's from-memory shape was close on path names but wrong on

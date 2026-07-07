@@ -20,10 +20,11 @@ require_technitium_ca_vars() {
 
 require_technitium_vars() {
   local var
-  for var in WORKDIR DNS_FQDN TECHNITIUM_HTTP_PORT TECHNITIUM_HTTPS_PORT TECHNITIUM_DATA_DIR TECHNITIUM_CERT_DIR TECHNITIUM_IMAGE; do
+  for var in WORKDIR DNS_FQDN TECHNITIUM_HTTP_PORT TECHNITIUM_HTTPS_PORT TECHNITIUM_DATA_DIR TECHNITIUM_CERT_DIR TECHNITIUM_IMAGE DNS_SYNC_SECRETS_DIR; do
     [[ -n "${!var:-}" ]] || fail "Missing required variable: $var"
   done
 
+  validate_var_path "${DNS_SYNC_SECRETS_DIR}"
   validate_var_path "${WORKDIR}"
   validate_var_fqdn "${DNS_FQDN}"
   validate_var_port "${TECHNITIUM_HTTP_PORT}"
@@ -154,6 +155,40 @@ issue_technitium_certificates() {
   normalize_technitium_certificate_permissions "${cert_dir}"
 }
 
+# Technitium's web service requires its TLS certificate as PKCS#12
+# (webServiceTlsCertificatePath in the settings API, verified against 13.4.2).
+# Convert the step-ca PEM material into technitium.pfx inside the already
+# mounted cert dir, with a generated password persisted like the repo's other
+# managed secrets. Rebuilt whenever the PEM material is newer (cert reissue).
+build_technitium_pfx() {
+  local cert_dir="${TECHNITIUM_CERT_DIR}"
+  local pfx_file="${cert_dir}/technitium.pfx"
+  local pfx_password_file="${cert_dir}/technitium-pfx-password"
+  local pfx_password
+
+  require_command openssl
+  if [[ ! -f "${pfx_password_file}" ]]; then
+    install -m 0600 /dev/null "${pfx_password_file}"
+    openssl rand -base64 24 | tr -d '\n' > "${pfx_password_file}"
+    echo "Generated Technitium PKCS#12 password at: ${pfx_password_file}"
+  fi
+  chmod 0600 "${pfx_password_file}"
+  chown 1000:1000 "${pfx_password_file}"
+  pfx_password="$(cat "${pfx_password_file}")"
+
+  if [[ ! -f "${pfx_file}" || "${cert_dir}/technitium.crt" -nt "${pfx_file}" || "${cert_dir}/technitium.key" -nt "${pfx_file}" ]]; then
+    echo "Building the Technitium PKCS#12 bundle at ${pfx_file}."
+    openssl pkcs12 -export \
+      -in "${cert_dir}/technitium.crt" \
+      -inkey "${cert_dir}/technitium.key" \
+      -out "${pfx_file}" \
+      -passout "pass:${pfx_password}" || \
+      fail "Failed to build the Technitium PKCS#12 bundle."
+  fi
+  chmod 0600 "${pfx_file}"
+  chown 1000:1000 "${pfx_file}"
+}
+
 render_technitium_stack() {
   render_template "${TEMPLATE_DIR}/docker-compose.technitium.yml.tpl" "${WORKDIR}/technitium/docker-compose.yml"
 }
@@ -249,6 +284,21 @@ technitium_json_string_field() {
   sed -n "s/.*\"${field}\":\"\\([^\"]*\\)\".*/\\1/p" | head -n1
 }
 
+# Authenticate to the local Technitium API with the first-boot admin
+# credentials and print a session token. Bootstrap-phase calls go over HTTP on
+# 127.0.0.1 only.
+technitium_api_login_token() {
+  local console_url="http://127.0.0.1:${TECHNITIUM_HTTP_PORT}"
+  local login_response token
+
+  login_response="$(curl --silent --show-error \
+    "${console_url}/api/user/login?user=admin&pass=admin" || true)"
+  token="$(printf '%s' "${login_response}" | technitium_json_string_field token)"
+  [[ -n "${token}" ]] || \
+    fail "Failed to authenticate to the Technitium API. Response: ${login_response}"
+  printf '%s' "${token}"
+}
+
 # Configure Technitium's upstream forwarder so it can resolve external names
 # and act as the sole nameserver for the host and lab. Authenticates with the
 # first-boot admin credentials (the module tells the operator to change the
@@ -256,14 +306,10 @@ technitium_json_string_field() {
 # settings API is idempotent, so re-running with the same value succeeds. The
 # forwarder setting persists in the Technitium data dir and is removed with it.
 configure_technitium_forwarder() {
-  local console_url login_response token set_response status recursion
+  local console_url token set_response status recursion
   console_url="http://127.0.0.1:${TECHNITIUM_HTTP_PORT}"
 
-  login_response="$(curl --silent --show-error \
-    "${console_url}/api/user/login?user=admin&pass=admin" || true)"
-  token="$(printf '%s' "${login_response}" | technitium_json_string_field token)"
-  [[ -n "${token}" ]] || \
-    fail "Failed to authenticate to the Technitium API to set the upstream forwarder. Response: ${login_response}"
+  token="$(technitium_api_login_token)"
 
   set_response="$(curl --silent --show-error --get \
     --data-urlencode "token=${token}" \
@@ -296,6 +342,90 @@ verify_technitium_external_resolution() {
   fail "Technitium cannot resolve external names — check DNS_FORWARDER reachability."
 }
 
+# Enable the web service TLS listener with the step-ca PKCS#12 bundle. The
+# settings API parameters (webServiceEnableTls, webServiceTlsPort,
+# webServiceTlsCertificatePath, webServiceTlsCertificatePassword) were
+# verified against the pinned 13.4.2 image; see TECHNITIUM_API.md. The port is
+# the container-internal 53443, which the compose template publishes as
+# TECHNITIUM_HTTPS_PORT.
+configure_technitium_web_tls() {
+  local console_url token pfx_password set_response status
+  console_url="http://127.0.0.1:${TECHNITIUM_HTTP_PORT}"
+
+  token="$(technitium_api_login_token)"
+  pfx_password="$(cat "${TECHNITIUM_CERT_DIR}/technitium-pfx-password")"
+
+  set_response="$(curl --silent --show-error --get \
+    --data-urlencode "token=${token}" \
+    --data-urlencode "webServiceEnableTls=true" \
+    --data-urlencode "webServiceTlsPort=53443" \
+    --data-urlencode "webServiceTlsCertificatePath=/etc/provider-box/technitium-certs/technitium.pfx" \
+    --data-urlencode "webServiceTlsCertificatePassword=${pfx_password}" \
+    "${console_url}/api/settings/set" || true)"
+  status="$(printf '%s' "${set_response}" | technitium_json_string_field status)"
+  [[ "${status}" == "ok" ]] || \
+    fail "Failed to enable Technitium web service TLS. Response: ${set_response}"
+
+  echo "Technitium web service TLS enabled with the step-ca certificate."
+}
+
+verify_technitium_https() {
+  local attempt
+  local https_url="https://${DNS_FQDN}:${TECHNITIUM_HTTPS_PORT}/"
+
+  echo "Verifying Technitium HTTPS at ${https_url} with the step-ca chain."
+  for attempt in $(seq 1 30); do
+    if curl --silent --show-error --fail \
+      --output /dev/null \
+      --cacert "${CA_DATA_DIR}/certs/root_ca.crt" \
+      --resolve "${DNS_FQDN}:${TECHNITIUM_HTTPS_PORT}:127.0.0.1" \
+      "${https_url}" 2>/dev/null; then
+      echo "Technitium HTTPS is serving the step-ca-issued certificate."
+      return 0
+    fi
+    sleep 2
+  done
+  fail "Technitium HTTPS did not become ready at ${https_url} with the step-ca certificate. Check 'docker compose logs'."
+}
+
+# Create a non-expiring API token via /api/user/createToken (verified against
+# 13.4.2; see TECHNITIUM_API.md) and store it where --dns-sync expects its
+# token file. Idempotent: a stored token is validated with a zones/list probe
+# and reused when Technitium still accepts it.
+provision_technitium_api_token() {
+  local console_url token_file stored status create_response api_token
+  console_url="http://127.0.0.1:${TECHNITIUM_HTTP_PORT}"
+  token_file="${DNS_SYNC_SECRETS_DIR}/technitium.token"
+
+  install -d -m 0700 "${DNS_SYNC_SECRETS_DIR}"
+
+  if [[ -s "${token_file}" ]]; then
+    stored="$(cat "${token_file}")"
+    status="$(curl --silent --show-error --get \
+      --data-urlencode "token=${stored}" \
+      "${console_url}/api/zones/list" | technitium_json_string_field status || true)"
+    if [[ "${status}" == "ok" ]]; then
+      echo "Reusing existing Technitium API token: ${token_file}"
+      chmod 0600 "${token_file}"
+      chown 1000:1000 "${token_file}"
+      return 0
+    fi
+    echo "Stored Technitium API token is no longer valid; creating a replacement."
+  fi
+
+  create_response="$(curl --silent --show-error \
+    "${console_url}/api/user/createToken?user=admin&pass=admin&tokenName=provider-box-dns-sync" || true)"
+  api_token="$(printf '%s' "${create_response}" | technitium_json_string_field token)"
+  [[ -n "${api_token}" ]] || \
+    fail "Failed to create a Technitium API token. Response: ${create_response}"
+
+  install -m 0600 /dev/null "${token_file}"
+  printf '%s' "${api_token}" > "${token_file}"
+  chmod 0600 "${token_file}"
+  chown 1000:1000 "${token_file}"
+  echo "Provisioned a Technitium API token for dns-sync at: ${token_file}"
+}
+
 do_technitium() {
   require_technitium_vars
   require_technitium_ca_vars
@@ -305,6 +435,7 @@ do_technitium() {
   require_ca_ready_for_technitium
   bootstrap_technitium_layout
   issue_technitium_certificates
+  build_technitium_pfx
   render_technitium_stack
   (
     cd "${WORKDIR}/technitium"
@@ -322,10 +453,13 @@ do_technitium() {
   verify_technitium_dns_listener
   configure_technitium_forwarder
   verify_technitium_external_resolution
+  configure_technitium_web_tls
+  verify_technitium_https
+  provision_technitium_api_token
   point_host_resolver_at_technitium
-  echo "Technitium is ready. Web console: http://${DNS_FQDN}:${TECHNITIUM_HTTP_PORT}"
-  echo "Step-ca-issued certificate is mounted at /etc/provider-box/technitium-certs inside the container."
-  echo "Capture the API token from the console before enabling seed apply or dns-sync."
+  echo "Technitium is ready. Web console: http://${DNS_FQDN}:${TECHNITIUM_HTTP_PORT} and https://${DNS_FQDN}:${TECHNITIUM_HTTPS_PORT}"
+  echo "Web service HTTPS is enabled with the step-ca-issued certificate."
+  echo "An API token for dns-sync is stored at ${DNS_SYNC_SECRETS_DIR}/technitium.token."
 }
 
 remove_technitium() {
