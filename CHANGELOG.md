@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## 2026-07-08
+
+### Improvements
+- Upgrade Technitium DNS from `13.4.2` to `15.3.0` (the release reviewed for this upgrade, on 2026-07-08 - baseline for the next drift check). The upgrade was assessed against the upstream changelog and verified live: the web service TLS settings API, `createToken`, forwarder settings, and zone/record CRUD are unchanged or backward-compatible (the query-string token form still works on 15.x alongside the new Bearer header), ports and the container uid are unchanged, and a 13.x data directory migrates in place on first 15.x start (zones, records, and API tokens preserved). No bootstrap, compose-template, or dns-sync code changes were required
+- Document the upgrade/rollback procedure in a new README "Upgrading Services" section, including the forward-only warning that a 15.x data directory must not be run under 13.x afterward
+- Record the 15.x API deltas in `services/dns-sync/TECHNITIUM_API.md`: built-in `internal` zones no longer appear in `zones/list` (the `internal` field is absent, the client filter is retained for mixed-version safety), and deleting a non-existent zone/record now returns an error instead of succeeding - which makes the dns-sync invariant "only delete records that List reported" load-bearing for correctness on 15.x
+
 ## 2026-07-06
 
 ### Features

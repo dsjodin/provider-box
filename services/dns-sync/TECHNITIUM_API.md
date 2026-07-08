@@ -2,9 +2,11 @@
 
 Verified against `docker.io/technitium/dns-server:13.4.2` on 2026-06-24 by
 standing up a throwaway container and probing every endpoint dns-sync calls.
-This is the authoritative reference; technitium-dns_design.md sec 3 was
-written from memory and several details were wrong (see "Differences from
-the design doc" at the bottom).
+Re-verified against `15.3.0` on 2026-07-08 for the 13.x -> 15.x upgrade; the
+version-specific deltas are called out inline below. This is the
+authoritative reference; technitium-dns_design.md sec 3 was written from
+memory and several details were wrong (see "Differences from the design
+doc" at the bottom).
 
 All endpoints return HTTP 200 even on errors. The body's `status` field is
 the real signal: `"ok"`, `"error"`, or `"invalid-token"`. Successful calls
@@ -12,9 +14,11 @@ also include a `response` object.
 
 ## 1. Authentication
 
-Token is passed as a **query parameter**: `?token=<TOKEN>`. Sending it as
-`Authorization: Bearer ...` does NOT work - the server still reports
-`Parameter 'token' missing`.
+Token is passed as a **query parameter**: `?token=<TOKEN>`. On 13.x, sending
+it as `Authorization: Bearer ...` does NOT work - the server reports
+`Parameter 'token' missing`. On 15.x the Bearer header is also accepted
+(added in v15.0), and the query-string `token` param remains supported for
+backward compatibility, so the query-string form below works on both.
 
 ### Create a permanent API token
 
@@ -70,10 +74,18 @@ Response:
 }
 ```
 
-Important: the listing includes Technitium's **built-in `internal: true`**
-zones (`0.in-addr.arpa`, `127.in-addr.arpa`, `255.in-addr.arpa`, the v6
-empty zone, `localhost`). dns-sync must filter `internal == true` out when
-diffing against current state.
+Important (13.x): the listing includes Technitium's **built-in
+`internal: true`** zones (`0.in-addr.arpa`, `127.in-addr.arpa`,
+`255.in-addr.arpa`, the v6 empty zone, `localhost`). dns-sync must filter
+`internal == true` out when diffing against current state.
+
+Version delta (15.x): v15.3 moved the built-in zones to "Locally Served DNS
+Zones" (RFC 6303) and they no longer appear in `zones/list` at all; the
+`internal` field is now **absent even on user-created zones**. Our
+`zoneEntry.Internal` unmarshals to its zero value `false`, so the filter
+becomes a harmless no-op and our own zones list correctly. The filter is
+**retained deliberately** so the client stays correct against a 13.x target
+during a mixed-version rollout - do not remove it.
 
 ### Create zone
 
@@ -98,7 +110,11 @@ Treat that specific error as success - it satisfies the EnsureZone contract.
 GET /api/zones/delete?token=<TOKEN>&zone=<NAME>
 ```
 
-Idempotent; deleting a missing zone returns `status: ok`.
+On 13.x this was idempotent (deleting a missing zone returned `status: ok`).
+On 15.x deleting a missing zone returns `status: error`
+(`No such zone was found: <name>`). dns-sync never deletes zones outside the
+integration-test cleanup (which ignores the result), so this delta does not
+affect reconcile.
 
 ## 3. Records
 
@@ -153,9 +169,17 @@ this endpoint is documented but not called.
 GET /api/zones/records/delete?token=<TOKEN>&zone=<ZONE>&domain=<FQDN>&type=<TYPE>&<rdata>
 ```
 
-Idempotent; deleting a missing record returns `status: ok` with empty
-response. The rdata identifier is required (the record set may contain
-multiple values of the same type, e.g. several A records on one name).
+The rdata identifier is required (the record set may contain multiple values
+of the same type, e.g. several A records on one name).
+
+**Delete of a missing record is NOT idempotent on 15.x.** 13.x returned
+`status: ok` for a non-existent record; 15.x returns `status: error`
+(`Cannot delete record: no such record exists.`). This makes a correctness
+invariant load-bearing rather than stylistic: `TechnitiumTarget.Apply` must
+only issue deletes for records that the preceding `List` reported as present
+(the current-minus-desired set of the diff). A future refactor must NOT
+introduce a blind/unconditional delete - on 15.x that would error and fail
+the reconcile pass, whereas on 13.x it silently succeeded.
 
 ### Get records in a zone
 
@@ -239,10 +263,12 @@ previous value is preserved. To explicitly clear forwarders, look up the
 upstream's "clear" mechanism per Technitium docs (not needed by dns-sync,
 which always sets a non-empty value).
 
-### Web service TLS (verified against 13.4.2)
+### Web service TLS (verified against 13.4.2, re-verified 15.3.0)
 
 The console/API HTTPS listener is disabled by default and is enabled via
-the same `settings/set` endpoint:
+the same `settings/set` endpoint (parameter names, the PKCS#12 requirement,
+and the 53443 default are unchanged on 15.x; the end-to-end enable + HTTPS
+chain check was re-run on 15.3.0):
 
 ```
 GET /api/settings/set?token=<TOKEN>
