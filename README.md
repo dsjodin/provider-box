@@ -32,6 +32,7 @@ The repository is intentionally simple: copy the example configuration, update v
 - [Choosing Services](#choosing-services)
 - [Service Runtime Model](#service-runtime-model)
 - [Removing Services](#removing-services)
+- [Upgrading Services](#upgrading-services)
 - [Configuration Model](#configuration-model)
 - [Dependency Updates](#dependency-updates)
 - [Service Notes](#service-notes)
@@ -213,6 +214,36 @@ When using `--all --remove`, services are removed in reverse dependency order. `
 Host-based services (`--unbound`, `--ntp`, `--rsyslog`) do not support `--remove` and fail fast if it is passed; remove them manually with system package/service management.
 
 See [Module Reference](#module-reference) for exactly what each `--remove` deletes and preserves.
+
+## Upgrading Services
+
+Container image versions are pinned in `config/provider-box.env` (see [Dependency Updates](#dependency-updates)). To move a containerized service to a new image version, change its `*_IMAGE` pin and redeploy that service; the bootstrap re-runs its configuration idempotently and the persisted data directory carries state forward.
+
+Before a major-version bump, review the upstream project's release notes for breaking changes to the parts Provider Box drives (APIs, settings parameters, data directory format, ports, and the container's user/permissions model), and take a backup of the service's persistent data directory so a rollback is possible.
+
+General upgrade procedure for a containerized service:
+
+```bash
+# 1. Back up the persistent data directory (rollback insurance)
+sudo tar czf /opt/provider-box/<service>-backup-$(date +%F).tgz -C /opt/provider-box <service>
+
+# 2. Update the pinned image version in config/provider-box.env
+#    (edit the relevant *_IMAGE line; never use :latest)
+
+# 3. Redeploy the single service
+sudo bash bootstrap/provider-box.sh --<service> --remove
+sudo bash bootstrap/provider-box.sh --<service>
+```
+
+Rollback: stop the service, restore the pre-upgrade data-directory backup, repin the previous image version, and redeploy.
+
+### Technitium DNS (13.x -> 15.x)
+
+Reviewed release: `docker.io/technitium/dns-server:15.3.0` (upgrade from `13.4.2`, assessed 2026-07-08). The API surface Provider Box uses (web service TLS settings, `createToken`, forwarder settings, zone/record CRUD), the data directory layout, ports, and the container uid are unchanged or backward-compatible; the query-string token form still works. A 13.x data directory migrates in place on first start of 15.x (existing zones, records, and API tokens are preserved), so the standard redeploy procedure above applies.
+
+- **Forward-only.** Once 15.x starts on a data directory it rewrites the `*.config` files; a 15.x data directory must NOT be run under 13.x afterward. Rollback to 13.x requires restoring the pre-upgrade backup taken in step 1 - there is no in-place downgrade.
+- **DNS stays up across the swap.** `--technitium` pre-pulls the pinned image before stopping the running container, so when Technitium is the host resolver the image is already cached when DNS briefly goes down during recreate. If the pull fails, the deploy aborts with the old server still running.
+- **Behavioral deltas that do not affect Provider Box** (documented in `services/dns-sync/TECHNITIUM_API.md`): built-in `internal` reverse zones no longer appear in `zones/list` on 15.x, and deleting a non-existent zone or record now returns an error instead of succeeding silently.
 
 ## Configuration Model
 

@@ -437,6 +437,16 @@ do_technitium() {
   issue_technitium_certificates
   build_technitium_pfx
   render_technitium_stack
+  # Pre-pull the pinned image BEFORE stopping the running container. When
+  # Technitium is the host resolver (resolv.conf -> 127.0.0.1), stopping it
+  # first would take DNS down and an un-cached image could not be pulled
+  # (registry-1.docker.io would fail to resolve). If the pull fails, abort
+  # without touching the running server. Applies to every re-run, not just
+  # version bumps.
+  (
+    cd "${WORKDIR}/technitium"
+    docker compose pull
+  ) || fail "Failed to pull the Technitium image ${TECHNITIUM_IMAGE}. The running server was left untouched. Fix connectivity and re-run --technitium."
   (
     cd "${WORKDIR}/technitium"
     docker compose down || true
