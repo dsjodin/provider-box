@@ -120,11 +120,8 @@ blast radius.
 - Why it matters: Unreferenced code drifts silently (it pins step-ca
   storage-format details that STEPCA_STORAGE.md itself calls
   version-fragile) and readers cannot tell whether it is supported.
-- Suggested fix: Either add the bootstrap module that deploys it or mark
-  the directory and design docs explicitly as work-in-progress (the README
-  layout section now labels it "design stage" as a stopgap).
-- Blast radius: None until deployed; documentation/expectation issue.
-
+- design-stage, not wired into bootstrap, part of the planned provider dashboard
+  
 ## 8. --unbound host resolver takeover has no restore path
 
 - What: `configure_resolv_conf` disables `systemd-resolved` and rewrites
