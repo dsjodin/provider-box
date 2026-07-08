@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ## 2026-07-08
 
+### Fixes
+- Fix the Technitium redeploy/upgrade path taking DNS down against an un-cached image: when Technitium is the host resolver (`resolv.conf` -> `127.0.0.1`), stopping the container before the new image was cached made `docker pull` fail because `registry-1.docker.io` could no longer resolve. `--technitium` now pre-pulls the pinned image before `compose down`, and aborts without stopping the running server if the pull fails. Applies to every re-run, not just version bumps
+
 ### Improvements
 - Upgrade Technitium DNS from `13.4.2` to `15.3.0` (the release reviewed for this upgrade, on 2026-07-08 - baseline for the next drift check). The upgrade was assessed against the upstream changelog and verified live: the web service TLS settings API, `createToken`, forwarder settings, and zone/record CRUD are unchanged or backward-compatible (the query-string token form still works on 15.x alongside the new Bearer header), ports and the container uid are unchanged, and a 13.x data directory migrates in place on first 15.x start (zones, records, and API tokens preserved). No bootstrap, compose-template, or dns-sync code changes were required
 - Document the upgrade/rollback procedure in a new README "Upgrading Services" section, including the forward-only warning that a 15.x data directory must not be run under 13.x afterward

@@ -197,6 +197,7 @@ Rollback: stop the service, restore the pre-upgrade data-directory backup, repin
 Reviewed release: `docker.io/technitium/dns-server:15.3.0` (upgrade from `13.4.2`, assessed 2026-07-08). The API surface Provider Box uses (web service TLS settings, `createToken`, forwarder settings, zone/record CRUD), the data directory layout, ports, and the container uid are unchanged or backward-compatible; the query-string token form still works. A 13.x data directory migrates in place on first start of 15.x (existing zones, records, and API tokens are preserved), so the standard redeploy procedure above applies.
 
 - **Forward-only.** Once 15.x starts on a data directory it rewrites the `*.config` files; a 15.x data directory must NOT be run under 13.x afterward. Rollback to 13.x requires restoring the pre-upgrade backup taken in step 1 - there is no in-place downgrade.
+- **DNS stays up across the swap.** `--technitium` pre-pulls the pinned image before stopping the running container, so when Technitium is the host resolver the image is already cached when DNS briefly goes down during recreate. If the pull fails, the deploy aborts with the old server still running.
 - **Behavioral deltas that do not affect Provider Box** (documented in `services/dns-sync/TECHNITIUM_API.md`): built-in `internal` reverse zones no longer appear in `zones/list` on 15.x, and deleting a non-existent zone or record now returns an error instead of succeeding silently.
 
 ## Configuration Model
