@@ -39,6 +39,10 @@ password_file_in_container="/home/step/${CA_PASSWORD_FILE#"${CA_DATA_DIR}"/}"
 cert_dir_in_container="/certs"
 
 install -d -m 0755 "${DASHBOARD_CERT_DIR}"
+# The step-cli container writes as uid 1000; the cert dir must be owned by 1000
+# BEFORE the run, or issuance fails "permission denied" on a first run where the
+# dir is freshly created as root/dsadmin. Post-run chown alone is too late.
+chown 1000:1000 "${DASHBOARD_CERT_DIR}"
 rm -f "${DASHBOARD_CERT_DIR}/dashboard.crt" "${DASHBOARD_CERT_DIR}/dashboard.key"
 
 echo "Issuing dashboard certificate for ${DASHBOARD_FQDN}."
