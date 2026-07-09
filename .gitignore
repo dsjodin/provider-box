@@ -20,6 +20,7 @@ config/dns.seed
 
 # Provider Box runtime data and secrets (live on the host, never in git)
 /dns-sync/
+/dashboard/
 /netbox/
 /runtime/
 /step-ca/

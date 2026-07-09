@@ -110,18 +110,24 @@ blast radius.
   the `set-forwarder` subcommand entirely.
 - Blast radius: Small. dns-seed CLI only; no bootstrap path uses it.
 
-## 7. services/stepca-api is not wired into anything
+## 7. services/stepca-api absorbed into services/dashboard (RESOLVED)
 
-- What: A complete Go service (`services/stepca-api`) plus two root-level
-  design documents (`step-ca_api_design.md`, `STEPCA_STORAGE.md`) exist,
-  but no bootstrap module, template, or env variable references them.
-- Where: `services/stepca-api/`, `step-ca_api_design.md`,
-  `STEPCA_STORAGE.md`.
-- Why it matters: Unreferenced code drifts silently (it pins step-ca
-  storage-format details that STEPCA_STORAGE.md itself calls
-  version-fragile) and readers cannot tell whether it is supported.
-- design-stage, not wired into bootstrap, part of the planned provider dashboard
-  
+- What: The design-stage `services/stepca-api` has been folded into the new
+  `services/dashboard` as its read-only "Certificates" panel. The reusable
+  step-ca BadgerDB reader (`reconcile/badger.go`) was migrated to
+  `services/dashboard/internal/certs`; the phase-2 collector parts (SQLite
+  inventory, reconcile loop, token-authed HTTP API) were dropped as they are
+  explicitly out of v1 scope. The `services/stepca-api/` directory has been
+  removed.
+- Where: now `services/dashboard/internal/certs/`.
+- Status: `STEPCA_STORAGE.md` is retained - the dashboard's cert reader still
+  depends on the storage-format details it documents. `step-ca_api_design.md`
+  is now historical (it describes the collector API that became phase 2 of the
+  dashboard); kept as background, not an active spec.
+- Note: `services/dashboard` itself is standalone and not yet wired into
+  bootstrap - that (a `--dashboard` module, inclusion in `--all`) is the
+  dashboard's phase 2, tracked in `services/dashboard/README.md`.
+
 ## 8. --unbound host resolver takeover has no restore path
 
 - What: `configure_resolv_conf` disables `systemd-resolved` and rewrites

@@ -605,6 +605,40 @@ aws --profile provider-box-s3 \
 
 The SFTP protocol service remains separate from the HTTPS UI configuration.
 
+### Dashboard (standalone, read-only)
+
+`services/dashboard` is a standalone, **read-only** "current state" view of the
+Provider Box services. It is **not** a bootstrap module and is **not** part of
+`--all`; it is run manually (see `services/dashboard/README.md` for the full run
+doc). It has its own listener and does not alter any other service.
+
+- **What it shows.** Five panels, each fetched on page load under its own short
+  timeout and isolated so a dead or unconfigured source renders "unavailable" /
+  "not configured" without blanking the page:
+  1. Certificates (step-ca) - active certs, subject/SANs, provisioner,
+     notBefore/notAfter, days-to-expiry against a warn threshold. Reads step-ca's
+     BadgerDB via a read-only snapshot copy (see `STEPCA_STORAGE.md`).
+  2. DNS (Technitium) - zones, managed record counts, forwarder, TLS reachability.
+  3. IPAM (NetBox) - prefix/IP counts and the `dns_name` inventory.
+  4. Services (Docker) - container state/health/uptime/image for the stacks.
+  5. Recent errors - a bounded per-container log tail, parsing `dns-sync`'s slog
+     JSON for `level>=error`.
+- **How to run it.** Add the `DASHBOARD_*` block from
+  `config/provider-box.env.example` to your `config/provider-box.env`, issue its
+  TLS cert from step-ca and place the scoped read-only tokens (steps in
+  `services/dashboard/README.md`), then:
+  `cd services/dashboard && docker compose --env-file ../../config/provider-box.env up -d --build`.
+- **Security posture.** Read-only everywhere (no upstream write path). It uses a
+  **dedicated minimum-read-scope NetBox token** (never the dns-sync/bootstrap
+  admin token), a scoped Technitium token, the step-ca DB read-only via snapshot,
+  and the Docker socket mounted `:ro`. Tokens come from files/env, never
+  hardcoded or logged. It serves HTTPS with a step-ca-issued cert (HTTP fallback
+  with a logged warning in a lab). **v1 has no auth on the UI itself** - this is
+  acceptable only on a trusted internal lab network. **TODO: front it with auth
+  (the repo's IdP or a reverse proxy) before any non-lab use.**
+- **Phase 2 (out of v1 scope).** History/collector (time series), a `--dashboard`
+  bootstrap module + inclusion in `--all`, and UI authentication.
+
 ## Module Reference
 
 All flags are passed to `sudo bash bootstrap/provider-box.sh <flag>`. "Depends on" lists other Provider Box modules only; every module also needs `config/provider-box.env`.
@@ -751,7 +785,7 @@ config/
 
 services/
   dns-sync/       Go source for the dns-sync and dns-seed binaries (image built locally by --dns-sync)
-  stepca-api/     Go source for a step-ca inventory API (design stage; not wired into any bootstrap module)
+  dashboard/      Go source for the standalone read-only dashboard (image + compose here; run manually, not a bootstrap module)
 
 templates/
   unbound.conf.tpl

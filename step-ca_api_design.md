@@ -1,5 +1,12 @@
 # stepca-api — Design Blueprint
 
+> **Historical.** This blueprint described a standalone certificate API service
+> (`services/stepca-api`, now removed). Its "list issued certificates" intent
+> now lives in `services/dashboard` as the read-only Certificates panel, which
+> reuses the step-ca BadgerDB reader documented in `STEPCA_STORAGE.md`. The
+> collector/API surface below (SQLite inventory, token-authed REST) is deferred
+> to the dashboard's phase 2. Kept as background, not an active spec.
+
 A thin management/API layer in front of step-ca for the provider-box fork. It exists to close the one gap step-ca leaves open — **listing issued certificates** — while presenting a clean, dashboard-friendly REST surface for the things step-ca already does (issue, revoke).
 
 > Decision context: step-ca was chosen over Vault/OpenBao because seal/unseal is the wrong operational model for a frequently-rebuilt lab. The cost of that choice is this wrapper. Keep it small.

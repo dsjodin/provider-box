@@ -1,8 +1,17 @@
 # step-ca Storage Layout (BadgerDB)
 
-Reference for how `stepca-api`'s reconcile job reads issued/revoked certificates directly from step-ca's embedded database. This is the **version-fragile** part of the service — it depends on step-ca's internal storage format, which is not a stable public API.
+> **Current location.** This reader now lives in
+> `services/dashboard/internal/certs/certs.go` (the dashboard's Certificates
+> panel), migrated from the removed `services/stepca-api`. The bucket layout,
+> key encoding, and snapshot-on-read approach documented below are unchanged and
+> still load-bearing. References below to `internal/reconcile/badger.go`,
+> `cmd/stepca-api`, and the SQLite inventory (including the hex-vs-decimal serial
+> note) describe the old service and are historical; the dashboard reader keeps
+> serials in step-ca's native form and has no SQLite store.
 
-> All of this is isolated in one file (`internal/reconcile/badger.go`, behind the `Source` interface). When step-ca bumps and something here changes, that is the only file to fix.
+Reference for how the dashboard's certificate reader reads issued/revoked certificates directly from step-ca's embedded database. This is the **version-fragile** part — it depends on step-ca's internal storage format, which is not a stable public API.
+
+> All of this is isolated in one file (`services/dashboard/internal/certs/certs.go`). When step-ca bumps and something here changes, that is the only file to fix.
 
 ---
 

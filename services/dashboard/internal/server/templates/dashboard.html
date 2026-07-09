@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Provider Box - Current State</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a2029; --border: #2b333f; --fg: #d7dde5;
+    --muted: #8b95a3; --accent: #4a9eda; --ok: #3fb56a; --warn: #d99a30;
+    --bad: #d9534f; --chip: #232b36;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 20px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 18px; }
+  header .meta { color: var(--muted); font-size: 12px; }
+  main { padding: 24px; display: grid; gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  .panel { background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden; }
+  .panel > h2 { margin: 0; padding: 12px 16px; font-size: 14px;
+    border-bottom: 1px solid var(--border); display: flex;
+    justify-content: space-between; align-items: center; }
+  .panel .body { padding: 12px 16px; }
+  .state { font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    text-transform: uppercase; letter-spacing: .04em; }
+  .state.ok { background: rgba(63,181,106,.15); color: var(--ok); }
+  .state.unavailable { background: rgba(217,83,79,.15); color: var(--bad); }
+  .state.disabled { background: var(--chip); color: var(--muted); }
+  .note { color: var(--muted); font-size: 13px; }
+  .note.err { color: var(--bad); word-break: break-word; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border);
+    vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .chip { background: var(--chip); border-radius: 6px; padding: 6px 10px;
+    font-size: 12px; }
+  .chip b { font-size: 15px; display: block; }
+  .badge { font-size: 11px; padding: 1px 7px; border-radius: 10px; }
+  .badge.ok { background: rgba(63,181,106,.15); color: var(--ok); }
+  .badge.warn { background: rgba(217,154,48,.18); color: var(--warn); }
+  .badge.bad { background: rgba(217,83,79,.15); color: var(--bad); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .san { color: var(--muted); font-size: 11px; word-break: break-all; }
+  ul.names { margin: 0; padding-left: 18px; columns: 2; font-size: 12px; }
+  .errlist { margin: 0; padding: 0; list-style: none; }
+  .errlist li { padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .errlist li:last-child { border-bottom: none; }
+  .errlist .src { color: var(--accent); font-size: 12px; }
+  .errlist .msg { display: block; margin-top: 2px; word-break: break-word; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Provider Box &mdash; Current State</h1>
+  <span class="meta">{{ .FQDN }} &middot; generated {{ .GeneratedAt }} &middot; read-only</span>
+</header>
+<main>
+
+  {{/* ---- Certificates ---- */}}
+  <section class="panel">
+    <h2>Certificates (step-ca) {{ template "state" .Certs.Status }}</h2>
+    <div class="body">
+    {{- if .Certs.Status.OK }}
+      {{- with .Certs.Summary }}
+      <div class="chips">
+        <span class="chip"><b>{{ .ActiveOK }}</b> active</span>
+        <span class="chip"><b>{{ .WarnCount }}</b> expiring</span>
+        <span class="chip"><b>{{ .ExpiredCount }}</b> expired</span>
+        <span class="chip"><b>{{ .RevokedCount }}</b> revoked</span>
+      </div>
+      {{- if .Certs }}
+      <table>
+        <tr><th>Subject</th><th>Provisioner</th><th>Not after</th><th>Days</th></tr>
+        {{- range .Certs }}
+        <tr>
+          <td>{{ .CommonName }}{{ if .SANs }}<div class="san">{{ join ", " .SANs }}</div>{{ end }}</td>
+          <td>{{ .Provisioner }}</td>
+          <td class="mono">{{ .NotAfter.Format "2006-01-02" }}</td>
+          <td>
+            {{- if .Revoked }}<span class="badge bad">revoked</span>
+            {{- else if .Expired }}<span class="badge bad">expired</span>
+            {{- else if .Warn }}<span class="badge warn">{{ .DaysToExpiry }}d</span>
+            {{- else }}<span class="badge ok">{{ .DaysToExpiry }}d</span>{{ end }}
+          </td>
+        </tr>
+        {{- end }}
+      </table>
+      {{- else }}<p class="note">No certificates found.</p>{{ end }}
+      {{- end }}
+    {{- else }}{{ template "unavail" .Certs.Status }}{{ end }}
+    </div>
+  </section>
+
+  {{/* ---- DNS ---- */}}
+  <section class="panel">
+    <h2>DNS (Technitium) {{ template "state" .DNS.Status }}</h2>
+    <div class="body">
+    {{- if .DNS.Status.OK }}
+      {{- with .DNS.Overview }}
+      <div class="chips">
+        <span class="chip"><b>{{ len .Zones }}</b> zones</span>
+        <span class="chip">forwarder<b>{{ if .Forwarders }}{{ join ", " .Forwarders }}{{ else }}none{{ end }}</b></span>
+        <span class="chip">TLS :{{ .TLSPort }}
+          {{- if .TLSReachable }} <span class="badge ok">up</span>{{ else }} <span class="badge bad">down</span>{{ end }}</span>
+      </div>
+      {{- if .Zones }}
+      <table>
+        <tr><th>Zone</th><th>Type</th><th>Records</th></tr>
+        {{- range .Zones }}
+        <tr><td class="mono">{{ .Name }}</td><td>{{ .Type }}</td><td>{{ .RecordCount }}</td></tr>
+        {{- end }}
+      </table>
+      {{- else }}<p class="note">No user zones.</p>{{ end }}
+      {{- end }}
+    {{- else }}{{ template "unavail" .DNS.Status }}{{ end }}
+    </div>
+  </section>
+
+  {{/* ---- IPAM ---- */}}
+  <section class="panel">
+    <h2>IPAM (NetBox) {{ template "state" .IPAM.Status }}</h2>
+    <div class="body">
+    {{- if .IPAM.Status.OK }}
+      {{- with .IPAM.Overview }}
+      <div class="chips">
+        <span class="chip"><b>{{ .PrefixCount }}</b> prefixes</span>
+        <span class="chip"><b>{{ .IPCount }}</b> IP addresses</span>
+        <span class="chip"><b>{{ len .DNSNames }}</b> DNS names</span>
+      </div>
+      {{- if .DNSNames }}
+      <ul class="names">
+        {{- range .DNSNames }}<li class="mono">{{ . }}</li>{{ end }}
+      </ul>
+      {{- else }}<p class="note">No dns_name values set.</p>{{ end }}
+      {{- end }}
+    {{- else }}{{ template "unavail" .IPAM.Status }}{{ end }}
+    </div>
+  </section>
+
+  {{/* ---- Services ---- */}}
+  <section class="panel">
+    <h2>Services (Docker) {{ template "state" .Services.Status }}</h2>
+    <div class="body">
+    {{- if .Services.Status.OK }}
+      {{- if .Services.Containers }}
+      <table>
+        <tr><th>Name</th><th>State</th><th>Health</th><th>Uptime</th><th>Image</th></tr>
+        {{- range .Services.Containers }}
+        <tr>
+          <td>{{ .Name }}</td>
+          <td>{{ if eq .State "running" }}<span class="badge ok">{{ .State }}</span>{{ else }}<span class="badge bad">{{ .State }}</span>{{ end }}</td>
+          <td>
+            {{- if eq .Health "healthy" }}<span class="badge ok">healthy</span>
+            {{- else if eq .Health "unhealthy" }}<span class="badge bad">unhealthy</span>
+            {{- else if eq .Health "starting" }}<span class="badge warn">starting</span>
+            {{- else }}<span class="note">-</span>{{ end }}
+          </td>
+          <td>{{ .Uptime }}</td>
+          <td class="mono">{{ .Image }}</td>
+        </tr>
+        {{- end }}
+      </table>
+      {{- else }}<p class="note">No matching containers.</p>{{ end }}
+    {{- else }}{{ template "unavail" .Services.Status }}{{ end }}
+    </div>
+  </section>
+
+  {{/* ---- Recent errors ---- */}}
+  <section class="panel">
+    <h2>Recent errors {{ template "state" .Errors.Status }}</h2>
+    <div class="body">
+    {{- if .Errors.Status.OK }}
+      {{- if .Errors.Entries }}
+      <ul class="errlist">
+        {{- range .Errors.Entries }}
+        <li>
+          <span class="src">{{ .Container }}</span>
+          {{- if .Time }} <span class="note mono">{{ .Time }}</span>{{ end }}
+          <span class="badge bad">{{ .Level }}</span>
+          <span class="msg mono">{{ if .Message }}{{ .Message }}{{ else }}{{ .Raw }}{{ end }}</span>
+        </li>
+        {{- end }}
+      </ul>
+      {{- else }}<p class="note">No error-level log lines in the recent tail.</p>{{ end }}
+    {{- else }}{{ template "unavail" .Errors.Status }}{{ end }}
+    </div>
+  </section>
+
+</main>
+
+{{- define "state" -}}
+  {{- if .OK }}<span class="state ok">ok</span>
+  {{- else if .Unavailable }}<span class="state unavailable">unavailable</span>
+  {{- else }}<span class="state disabled">not configured</span>{{ end -}}
+{{- end -}}
+
+{{- define "unavail" -}}
+  {{- if .Disabled }}<p class="note">Not configured. {{ .Error }}</p>
+  {{- else }}<p class="note err">Source unavailable: {{ .Error }}</p>{{ end -}}
+{{- end -}}
+</body>
+</html>

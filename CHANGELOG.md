@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## 2026-07-09
+
+### Features
+- Add `services/dashboard`: a standalone, read-only "current state" view of the Provider Box services (single Go binary serving an HTML page + JSON API, std-lib HTTP, embedded template - matches the existing Go services and needs no frontend framework). Five panels, each isolated behind its own short timeout so a dead or unconfigured source renders "unavailable"/"not configured" without blanking the page: Certificates (step-ca), DNS (Technitium), IPAM (NetBox), Services (Docker), and Recent errors (container log tail)
+- Absorb the design-stage `services/stepca-api` into the dashboard: its reusable step-ca BadgerDB reader is migrated to `services/dashboard/internal/certs` as the Certificates panel (active certs, subjects/SANs, provisioner, notBefore/notAfter, days-to-expiry against a warn threshold); the phase-2 collector parts (SQLite inventory, reconcile loop, token-authed REST API) were dropped as out of v1 scope. `services/stepca-api/` is removed
+- Read paths reuse the shapes the repo already verified: the DNS panel calls the same Technitium endpoints as `dns-sync` (`zones/list`, `zones/records/get`, `settings/get`), the IPAM panel reads NetBox IPAM, and both honor the v1/v2 token formats
+- Serve HTTPS with a step-ca-issued cert for `DASHBOARD_FQDN`; fall back to plaintext HTTP with a logged warning when no cert is configured (lab only)
+
+### Security
+- Read-only throughout: no upstream write path exists. The dashboard expects a dedicated minimum-read-scope NetBox token (not the dns-sync/bootstrap admin token), a scoped Technitium token, the step-ca DB via a read-only snapshot copy (never opened directly), and the Docker socket mounted `:ro`. All tokens come from files/env, never hardcoded or logged
+- v1 ships with no authentication on the UI itself - acceptable only on a trusted internal lab network. Documented as an explicit assumption with a TODO to front it with auth before any non-lab use
+
+### Notes
+- The dashboard is run manually and is NOT wired into `bootstrap/provider-box.sh` or `--all`. A `--dashboard` bootstrap module, a history/collector, and UI auth are the documented phase 2. Run it with the standalone `services/dashboard/docker-compose.yml`; add the `DASHBOARD_*` block from `config/provider-box.env.example` to your `config/provider-box.env`
+
 ## 2026-07-08
 
 ### Fixes
