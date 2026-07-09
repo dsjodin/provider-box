@@ -14,6 +14,6 @@ services:
       - "${SFTP_PORT}:2022"
       - "${SFTP_ADMIN_PORT}:8080"
     volumes:
-      - ${SFTP_DATA_DIR}:/srv/sftpgo
-      - ${SFTP_HOME_DIR}:/var/lib/sftpgo
-      - ${SFTP_CERT_DIR}:/var/lib/sftpgo/certs:ro
+      - ${SFTP_DATA_DIR:?SFTP_DATA_DIR must be set (empty would create a blank bind-mount source)}:/srv/sftpgo
+      - ${SFTP_HOME_DIR:?SFTP_HOME_DIR must be set (empty would create a blank bind-mount source)}:/var/lib/sftpgo
+      - ${SFTP_CERT_DIR:?SFTP_CERT_DIR must be set (empty would create a blank bind-mount source)}:/var/lib/sftpgo/certs:ro

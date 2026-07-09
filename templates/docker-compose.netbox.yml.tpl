@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: "${NETBOX_POSTGRES_USER}"
       POSTGRES_PASSWORD: "${NETBOX_POSTGRES_PASSWORD}"
     volumes:
-      - ${NETBOX_POSTGRES_DATA_DIR}:/var/lib/postgresql/data
+      - ${NETBOX_POSTGRES_DATA_DIR:?NETBOX_POSTGRES_DATA_DIR must be set (empty would create a blank bind-mount source)}:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${NETBOX_POSTGRES_USER} -d ${NETBOX_POSTGRES_DB}"]
       interval: 15s
@@ -24,7 +24,7 @@ services:
       - --requirepass
       - ${NETBOX_REDIS_PASSWORD}
     volumes:
-      - ${NETBOX_REDIS_DATA_DIR}:/data
+      - ${NETBOX_REDIS_DATA_DIR:?NETBOX_REDIS_DATA_DIR must be set (empty would create a blank bind-mount source)}:/data
 
   netbox:
     image: ${NETBOX_IMAGE}
@@ -54,7 +54,7 @@ services:
       SUPERUSER_PASSWORD: "${NETBOX_SUPERUSER_PASSWORD}"
       SKIP_SUPERUSER: "false"
     volumes:
-      - ${NETBOX_MEDIA_DIR}:/opt/netbox/netbox/media
+      - ${NETBOX_MEDIA_DIR:?NETBOX_MEDIA_DIR must be set (empty would create a blank bind-mount source)}:/opt/netbox/netbox/media
 
   netbox-https:
     image: ${NETBOX_NGINX_IMAGE}
@@ -64,5 +64,5 @@ services:
     ports:
       - "${NETBOX_PORT}:8443"
     volumes:
-      - ${NETBOX_DIR}/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ${NETBOX_DIR}/certs:/etc/provider-box/certs:ro
+      - ${NETBOX_DIR:?NETBOX_DIR must be set (empty would create a blank bind-mount source)}/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${NETBOX_DIR:?NETBOX_DIR must be set (empty would create a blank bind-mount source)}/certs:/etc/provider-box/certs:ro

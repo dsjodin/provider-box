@@ -29,6 +29,20 @@ fi
 command -v docker >/dev/null || fail "docker is required"
 docker compose version >/dev/null 2>&1 || fail "docker compose v2 is required"
 
+# Validate the variables the compose file interpolates into bind-mount SOURCES
+# before calling docker compose. An empty value makes Docker auto-create the
+# missing source as a directory, which can corrupt data (this is how an empty
+# CA_DATA_DIR once turned step-ca's root_ca.crt into a directory). Compose's
+# ${VAR:?...} guards are the second layer; this fails fast naming the variable.
+set -a
+# shellcheck disable=SC1090
+source "${ENV_FILE}"
+set +a
+for var in CA_DATA_DIR DASHBOARD_CERT_DIR DASHBOARD_SECRETS_DIR; do
+  [[ -n "${!var:-}" ]] || fail "${var} is empty or unset in ${ENV_FILE}; refusing to run docker compose - an empty bind-mount source would create a blank host directory and can corrupt data."
+  [[ "${!var}" == /* ]] || fail "${var} must be an absolute path (got '${!var}')."
+done
+
 # Resolve the host docker gid; a shell export overrides the env-file default so
 # the socket mount works without hand-editing config.
 if docker_gid="$(getent group docker | cut -d: -f3)" && [[ -n "${docker_gid}" ]]; then

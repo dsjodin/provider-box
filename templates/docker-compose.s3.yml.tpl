@@ -14,4 +14,4 @@ services:
     ports:
       - "${S3_PORT}:${S3_PORT}"
     volumes:
-      - ${S3_DATA_DIR}:/data
+      - ${S3_DATA_DIR:?S3_DATA_DIR must be set (empty would create a blank bind-mount source)}:/data

@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: "${AUTHENTIK_PG_USER}"
       POSTGRES_PASSWORD: "${AUTHENTIK_PG_PASSWORD}"
     volumes:
-      - ${AUTHENTIK_DIR}/postgres:/var/lib/postgresql/data
+      - ${AUTHENTIK_DIR:?AUTHENTIK_DIR must be set (empty would create a blank bind-mount source)}/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${AUTHENTIK_PG_USER} -d ${AUTHENTIK_PG_DB}"]
       interval: 15s
@@ -35,9 +35,9 @@ services:
     ports:
       - "${AUTHENTIK_PORT}:9443"
     volumes:
-      - ${AUTHENTIK_DIR}/certs:/certs:ro
-      - ${AUTHENTIK_DIR}/data:/data
-      - ${WORKDIR}/authentik/blueprints:/blueprints/custom:ro
+      - ${AUTHENTIK_DIR:?AUTHENTIK_DIR must be set (empty would create a blank bind-mount source)}/certs:/certs:ro
+      - ${AUTHENTIK_DIR:?AUTHENTIK_DIR must be set (empty would create a blank bind-mount source)}/data:/data
+      - ${WORKDIR:?WORKDIR must be set (empty would create a blank bind-mount source)}/authentik/blueprints:/blueprints/custom:ro
 
   worker:
     image: ${AUTHENTIK_IMAGE}
@@ -58,6 +58,6 @@ services:
       AUTHENTIK_BOOTSTRAP_PASSWORD: "${AUTHENTIK_ADMIN_PASSWORD}"
       AUTHENTIK_BOOTSTRAP_TOKEN: "${AUTHENTIK_API_TOKEN}"
     volumes:
-      - ${AUTHENTIK_DIR}/certs:/certs:ro
-      - ${AUTHENTIK_DIR}/data:/data
-      - ${WORKDIR}/authentik/blueprints:/blueprints/custom:ro
+      - ${AUTHENTIK_DIR:?AUTHENTIK_DIR must be set (empty would create a blank bind-mount source)}/certs:/certs:ro
+      - ${AUTHENTIK_DIR:?AUTHENTIK_DIR must be set (empty would create a blank bind-mount source)}/data:/data
+      - ${WORKDIR:?WORKDIR must be set (empty would create a blank bind-mount source)}/authentik/blueprints:/blueprints/custom:ro

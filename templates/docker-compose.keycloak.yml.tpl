@@ -12,9 +12,9 @@ services:
     ports:
       - "${KEYCLOAK_PORT}:8443"
     volumes:
-      - ${KEYCLOAK_DIR}/certs:/opt/keycloak/certs:ro
-      - ${KEYCLOAK_DIR}/data:/opt/keycloak/data
-      - ${WORKDIR}/keycloak/import:/opt/keycloak/data/import:ro
+      - ${KEYCLOAK_DIR:?KEYCLOAK_DIR must be set (empty would create a blank bind-mount source)}/certs:/opt/keycloak/certs:ro
+      - ${KEYCLOAK_DIR:?KEYCLOAK_DIR must be set (empty would create a blank bind-mount source)}/data:/opt/keycloak/data
+      - ${WORKDIR:?WORKDIR must be set (empty would create a blank bind-mount source)}/keycloak/import:/opt/keycloak/data/import:ro
     command:
       - start
       - --import-realm

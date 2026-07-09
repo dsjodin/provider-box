@@ -20,5 +20,5 @@ services:
       DNS_SYNC_INTERVAL: "${DNS_SYNC_INTERVAL}"
       DNS_SYNC_BUILTIN_RECORDS: "${DNS_SYNC_BUILTIN_RECORDS}"
     volumes:
-      - ${DNS_SYNC_SECRETS_DIR}:/run/provider-box/secrets:ro
-      - ${CA_DATA_DIR}/certs/root_ca.crt:/etc/provider-box/certs/root_ca.crt:ro
+      - ${DNS_SYNC_SECRETS_DIR:?DNS_SYNC_SECRETS_DIR must be set (empty would create a blank bind-mount source)}:/run/provider-box/secrets:ro
+      - ${CA_DATA_DIR:?CA_DATA_DIR must be set (empty would create a blank bind-mount source)}/certs/root_ca.crt:/etc/provider-box/certs/root_ca.crt:ro

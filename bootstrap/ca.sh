@@ -34,6 +34,22 @@ require_ca_remove_vars() {
   validate_var_path "${CA_DATA_DIR}"
 }
 
+# Guard against a prior `docker compose` run with an empty CA_DATA_DIR (an
+# unset variable) having created ${CA_DATA_DIR}/certs/root_ca.crt as a
+# DIRECTORY: Docker auto-creates a missing bind-mount source as a directory, so
+# a blank path turned this trust-root file into a directory, broke step-ca init
+# ("file is a directory") and destroyed the running CA. Refuse to proceed on a
+# corrupted root so the operator notices instead of looping on a broken init.
+require_ca_root_not_corrupted() {
+  local root="${CA_DATA_DIR}/certs/root_ca.crt"
+  if [[ -d "${root}" ]]; then
+    fail "step-ca root certificate ${root} is a DIRECTORY, not a file. This is almost always a prior 'docker compose' run with an empty CA_DATA_DIR (an unset variable) auto-creating the missing bind-mount source as a directory - it can destroy the CA. Remove it (rm -rf '${root}') and restore or re-initialize the CA before re-running --ca."
+  fi
+  if [[ -e "${root}" && ! -f "${root}" ]]; then
+    fail "step-ca root certificate ${root} exists but is not a regular file (likely a bad bind mount from an empty CA_DATA_DIR). Investigate and restore a valid root_ca.crt before re-running --ca."
+  fi
+}
+
 normalize_ca_password_files() {
   local file
 
@@ -94,6 +110,7 @@ do_ca() {
   local password_dir password_value
 
   require_ca_vars
+  require_ca_root_not_corrupted
   common_pkgs
   docker_pkgs
   password_dir="$(dirname "${CA_PASSWORD_FILE}")"

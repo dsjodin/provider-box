@@ -11,4 +11,4 @@ ${CA_ACME_ENV_BLOCK}
     ports:
       - "${CA_PORT}:9000"
     volumes:
-      - ${CA_DATA_DIR}:/home/step
+      - ${CA_DATA_DIR:?CA_DATA_DIR must be set (empty would create a blank bind-mount source)}:/home/step

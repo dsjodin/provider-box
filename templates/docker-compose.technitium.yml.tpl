@@ -10,5 +10,5 @@ services:
       - "${TECHNITIUM_HTTP_PORT}:5380/tcp"
       - "${TECHNITIUM_HTTPS_PORT}:53443/tcp"
     volumes:
-      - ${TECHNITIUM_DATA_DIR}:/etc/dns
-      - ${TECHNITIUM_CERT_DIR}:/etc/provider-box/technitium-certs:ro
+      - ${TECHNITIUM_DATA_DIR:?TECHNITIUM_DATA_DIR must be set (empty would create a blank bind-mount source)}:/etc/dns
+      - ${TECHNITIUM_CERT_DIR:?TECHNITIUM_CERT_DIR must be set (empty would create a blank bind-mount source)}:/etc/provider-box/technitium-certs:ro
