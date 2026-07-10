@@ -476,7 +476,9 @@ provision_technitium_dashboard_token() {
     --data-urlencode "user=dashboard" \
     "${console_url}/api/admin/users/get" | technitium_json_string_field status || true)"
   if [[ "${status}" != "ok" ]]; then
-    dash_pass="$(openssl rand -hex 24)"
+    # Technitium enforces no password-complexity policy, but use the same
+    # strong generator as the NetBox path for consistency.
+    dash_pass="$(openssl rand -base64 24 | tr -d '\n')Aa1!"
     create_response="$(curl --silent --show-error --get \
       --data-urlencode "token=${admin_token}" \
       --data-urlencode "user=dashboard" \

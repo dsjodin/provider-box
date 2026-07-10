@@ -597,8 +597,10 @@ provision_dashboard_netbox_token() {
 
   # Non-privileged service user (no staff/superuser) in the read-only group. The
   # password is generated per pass and used only to provision the token below;
-  # it is never stored.
-  dash_pass="$(openssl rand -hex 24)"
+  # it is never stored. base64 gives >= 12 chars (NetBox's MinimumLengthValidator)
+  # and the fixed "Aa1!" suffix guarantees the digit/uppercase/lowercase classes
+  # NetBox 4.6's AlphanumericPasswordValidator requires.
+  dash_pass="$(openssl rand -base64 24 | tr -d '\n')Aa1!"
   user_id="$(netbox_get_object_id /api/users/users/ "username=dashboard")"
   if [[ -z "${user_id}" ]]; then
     user_payload="$(printf '{"username":"dashboard","password":"%s","is_active":true,"is_staff":false,"is_superuser":false,"groups":[%s]}' "${dash_pass}" "${group_id}")"
