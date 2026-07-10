@@ -80,6 +80,7 @@ func main() {
 	techToken := flag.String("technitium-token", "", "Technitium API token (or TECHNITIUM_TOKEN env; prefer TECHNITIUM_TOKEN_FILE for SOPS/age)")
 	techTokenFile := flag.String("technitium-token-file", os.Getenv("TECHNITIUM_TOKEN_FILE"), "Path to file containing the Technitium API token")
 	techCABundle := flag.String("technitium-ca-bundle", os.Getenv("TECHNITIUM_CA_BUNDLE"), "Optional PEM bundle for Technitium TLS")
+	techDashboardUser := flag.String("technitium-dashboard-user", os.Getenv("DNS_SYNC_TECHNITIUM_DASHBOARD_USER"), "Optional non-admin Technitium username granted View on newly created zones so the read-only dashboard lists them; empty disables")
 	interval := flag.Duration("interval", envDuration("DNS_SYNC_INTERVAL", 30*time.Second), "Reconcile interval")
 	builtinRecords := flag.String("builtin-records", os.Getenv("DNS_SYNC_BUILTIN_RECORDS"), "Comma-separated fqdn=ipv4 built-in service records merged into the desired set")
 	dryRun := flag.Bool("dry-run", false, "Log the diff via LogTarget instead of writing to Technitium")
@@ -128,8 +129,10 @@ func main() {
 			logger.Error("init technitium client", "err", err)
 			os.Exit(1)
 		}
+		tt.DashboardReadonlyUser = *techDashboardUser
+		tt.Logger = logger
 		target = tt
-		logger.Info("target: technitium", "url", *techURL)
+		logger.Info("target: technitium", "url", *techURL, "dashboard_zone_grant", *techDashboardUser != "")
 	}
 
 	r := &reconcile.Reconciler{

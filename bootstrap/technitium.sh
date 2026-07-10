@@ -429,13 +429,24 @@ provision_technitium_api_token() {
 # Auto-provision the dedicated read-only Technitium token the dashboard DNS
 # panel consumes, mirroring provision_technitium_api_token (validity-probe
 # idempotency, producer-side, skip-if-not-configured). Creates a non-admin
-# 'dashboard' service user and grants it Settings:View (Dashboard and Zones view
-# already come from the built-in Everyone group), then mints a permanent API
-# token carrying that user's deliberately limited privileges. An operator-placed
-# (SOPS/age) token always wins while Technitium still accepts it. Skipped with a
-# notice when DASHBOARD_SECRETS_DIR is unset so --technitium stays standalone.
+# 'dashboard' service user, grants it read access to the panel's data (Settings
+# section View plus per-zone View on every existing zone), and mints a permanent
+# API token carrying that user's deliberately limited privileges. An operator-
+# placed (SOPS/age) token always wins while Technitium still accepts it. Skipped
+# with a notice when DASHBOARD_SECRETS_DIR is unset so --technitium stays
+# standalone.
+#
+# The read grants are (re)applied on every run - before the token reuse check -
+# so that re-running --technitium picks up zones created since the last run and
+# a reused token still gets access. Zone visibility needs an explicit per-zone
+# grant: Technitium filters zones/list by BOTH the Zones section permission and
+# each zone's own permission, and a newly created zone is granted only to its
+# creator and the Administrators/DNS Administrators groups (verified against the
+# pinned image source) - never to Everyone. So the built-in Everyone group's
+# section-level Zones view does NOT make zones visible to a non-admin.
 provision_technitium_dashboard_token() {
   local console_url token_file stored status admin_token dash_pass create_response set_response api_token
+  local zones_json zone_names zone_name
   console_url="http://127.0.0.1:${TECHNITIUM_HTTP_PORT}"
 
   if [[ -z "${DASHBOARD_SECRETS_DIR:-}" ]]; then
@@ -447,30 +458,13 @@ provision_technitium_dashboard_token() {
   install -d -m 0700 "${DASHBOARD_SECRETS_DIR}"
   chown 1000:1000 "${DASHBOARD_SECRETS_DIR}"
 
-  # The DNS panel reads settings/get (the most-privileged call it makes), so the
-  # validity probe uses it: an operator token that cannot read settings is not
-  # reused.
-  if [[ -s "${token_file}" ]]; then
-    stored="$(cat "${token_file}")"
-    status="$(curl --silent --show-error --get \
-      --data-urlencode "token=${stored}" \
-      "${console_url}/api/settings/get" | technitium_json_string_field status || true)"
-    if [[ "${status}" == "ok" ]]; then
-      echo "Reusing existing dashboard Technitium token: ${token_file}"
-      chmod 0600 "${token_file}"
-      chown 1000:1000 "${token_file}"
-      return 0
-    fi
-    echo "Stored dashboard Technitium token is no longer valid; creating a replacement."
-  fi
-
   admin_token="$(technitium_api_login_token)"
 
   # Create the non-admin service user only when it is absent (idempotent, and
   # avoids depending on the create call's duplicate-error text). New users join
-  # only the built-in 'Everyone' group (Dashboard/Zones view, no admin rights).
-  # The generated password only satisfies the create call; the token below is
-  # minted with admin authority, so it is never needed again or stored.
+  # only the built-in 'Everyone' group (no admin rights). The generated password
+  # only satisfies the create call; the token below is minted with admin
+  # authority, so it is never needed again or stored.
   status="$(curl --silent --show-error --get \
     --data-urlencode "token=${admin_token}" \
     --data-urlencode "user=dashboard" \
@@ -502,6 +496,50 @@ provision_technitium_dashboard_token() {
   status="$(printf '%s' "${set_response}" | technitium_json_string_field status)"
   [[ "${status}" == "ok" ]] || \
     fail "Failed to grant the Technitium dashboard user Settings:View. Response: ${set_response}"
+
+  # Grant the dashboard user View on every existing zone. Only userPermissions is
+  # sent (never groupPermissions): the API syncs the user and group tables
+  # independently, so omitting groupPermissions leaves each zone's Administrators/
+  # DNS Administrators access untouched while adding the dashboard user. The admin
+  # creator is re-sent so it is not dropped from the user table. Zones created
+  # later (by dns-sync) are picked up on the next --technitium run.
+  zones_json="$(curl --silent --show-error --get \
+    --data-urlencode "token=${admin_token}" \
+    "${console_url}/api/zones/list" || true)"
+  # Split the zone array into one object per line, drop RFC 6303 internal zones
+  # (the dashboard filters them out anyway), and read each zone name.
+  zone_names="$(printf '%s' "${zones_json}" \
+    | sed 's/},{/}\n{/g' \
+    | grep -v '"internal":true' \
+    | grep -o '"name":"[^"]*"' \
+    | sed 's/^"name":"//; s/"$//' || true)"
+  while IFS= read -r zone_name; do
+    [[ -n "${zone_name}" ]] || continue
+    status="$(curl --silent --show-error --get \
+      --data-urlencode "token=${admin_token}" \
+      --data-urlencode "zone=${zone_name}" \
+      --data-urlencode "userPermissions=admin|true|true|true|dashboard|true|false|false" \
+      "${console_url}/api/zones/permissions/set" | technitium_json_string_field status || true)"
+    [[ "${status}" == "ok" ]] || \
+      echo "NOTICE: could not grant the dashboard user View on Technitium zone ${zone_name} (status: ${status:-unknown})."
+  done <<< "${zone_names}"
+
+  # Reuse a still-valid token (operator-placed override or a prior run's) rather
+  # than minting a new one; the read grants above have already been refreshed.
+  # The probe uses settings/get, the most-privileged call the DNS panel makes.
+  if [[ -s "${token_file}" ]]; then
+    stored="$(cat "${token_file}")"
+    status="$(curl --silent --show-error --get \
+      --data-urlencode "token=${stored}" \
+      "${console_url}/api/settings/get" | technitium_json_string_field status || true)"
+    if [[ "${status}" == "ok" ]]; then
+      echo "Reusing existing dashboard Technitium token: ${token_file}"
+      chmod 0600 "${token_file}"
+      chown 1000:1000 "${token_file}"
+      return 0
+    fi
+    echo "Stored dashboard Technitium token is no longer valid; creating a replacement."
+  fi
 
   # Mint a permanent API token for the dashboard user with its limited privileges.
   create_response="$(curl --silent --show-error --get \

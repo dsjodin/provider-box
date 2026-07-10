@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -31,6 +32,24 @@ type Target struct {
 	Token   string
 	TTL     int
 	HTTP    *http.Client
+
+	// DashboardReadonlyUser, when non-empty, is a non-admin Technitium username
+	// granted View on each newly created zone (via zones/permissions/set) so the
+	// read-only dashboard can list continuously-synced zones without a
+	// --technitium re-run. Best-effort: grant failures are logged and never fail
+	// reconcile. Empty disables the grant.
+	DashboardReadonlyUser string
+
+	// Logger receives best-effort, non-fatal messages (the dashboard zone grant).
+	// Defaults to slog.Default() when nil.
+	Logger *slog.Logger
+}
+
+func (t *Target) logger() *slog.Logger {
+	if t.Logger != nil {
+		return t.Logger
+	}
+	return slog.Default()
 }
 
 // New builds a Target. baseURL is the Technitium console root, e.g.
@@ -278,10 +297,43 @@ func (t *Target) ensureZone(ctx context.Context, zoneFQDN string) error {
 	params.Set("zone", name)
 	params.Set("type", "Primary")
 	err := t.call(ctx, "/api/zones/create", params, nil)
-	if err == nil || isZoneExistsError(err) {
+	switch {
+	case err == nil:
+		// Zone newly created: best-effort grant so the read-only dashboard lists
+		// it without a --technitium re-run. Only fires on fresh creation (an
+		// existing zone was granted at its creation, or by --technitium's bulk
+		// grant). Never fails zone creation.
+		t.grantDashboardZoneView(ctx, name)
 		return nil
+	case isZoneExistsError(err):
+		return nil
+	default:
+		return fmt.Errorf("create zone %s: %w", name, err)
 	}
-	return fmt.Errorf("create zone %s: %w", name, err)
+}
+
+// grantDashboardZoneView best-effort grants the configured dashboard read-only
+// user View permission on zone via zones/permissions/set, mirroring
+// provision_technitium_dashboard_token in bootstrap/technitium.sh. Only
+// userPermissions is sent, so Technitium leaves the zone's group permissions
+// (Administrators/DNS Administrators) untouched; the admin creator is re-sent so
+// it is not dropped from the user table. Non-fatal by contract: an empty
+// DashboardReadonlyUser skips it entirely, a missing dashboard user is silently
+// ignored by Technitium (unknown users are skipped when syncing permissions),
+// and any transport or API error is logged and swallowed so reconcile never
+// breaks on an optional dashboard grant.
+func (t *Target) grantDashboardZoneView(ctx context.Context, zone string) {
+	if t.DashboardReadonlyUser == "" {
+		return
+	}
+	params := url.Values{}
+	params.Set("zone", zone)
+	params.Set("userPermissions", "admin|true|true|true|"+t.DashboardReadonlyUser+"|true|false|false")
+	if err := t.call(ctx, "/api/zones/permissions/set", params, nil); err != nil {
+		t.logger().Warn("dashboard zone grant failed; continuing", "zone", zone, "user", t.DashboardReadonlyUser, "err", err)
+		return
+	}
+	t.logger().Debug("granted dashboard read access to zone", "zone", zone, "user", t.DashboardReadonlyUser)
 }
 
 func (t *Target) addRecord(ctx context.Context, r model.Record) error {

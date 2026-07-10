@@ -19,6 +19,11 @@ services:
       TECHNITIUM_CA_BUNDLE: "/etc/provider-box/certs/root_ca.crt"
       DNS_SYNC_INTERVAL: "${DNS_SYNC_INTERVAL}"
       DNS_SYNC_BUILTIN_RECORDS: "${DNS_SYNC_BUILTIN_RECORDS}"
+      # Non-admin Technitium user the read-only dashboard authenticates as.
+      # dns-sync grants it View on each newly created zone so continuously-synced
+      # zones appear in the dashboard without a --technitium re-run. Best-effort;
+      # empty disables the grant.
+      DNS_SYNC_TECHNITIUM_DASHBOARD_USER: "${DNS_SYNC_TECHNITIUM_DASHBOARD_USER}"
     volumes:
       - ${DNS_SYNC_SECRETS_DIR:?DNS_SYNC_SECRETS_DIR must be set (empty would create a blank bind-mount source)}:/run/provider-box/secrets:ro
       - ${CA_DATA_DIR:?CA_DATA_DIR must be set (empty would create a blank bind-mount source)}/certs/root_ca.crt:/etc/provider-box/certs/root_ca.crt:ro
