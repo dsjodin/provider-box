@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## 2026-07-10
+
+### Fixes
+- Fix the `step-ca` container reporting `unhealthy` while the CA is fine. `templates/docker-compose.step-ca.yml.tpl` had no healthcheck, so Compose ran the image's default `step ca health` with no args, which resolves `CA_FQDN` through Docker's embedded resolver (`127.0.0.11`) - unable to answer for the lab zone - and fails. The template now pins `CA_FQDN` to the local listener via `extra_hosts` (`${CA_FQDN}:127.0.0.1`, the same `--add-host` idiom the service modules use) and sets an explicit healthcheck: `step ca health --ca-url https://${CA_FQDN}:9000 --root /home/step/certs/root_ca.crt | grep '^ok'`. This resolves locally and verifies against the matching cert SAN (`CA_FQDN`), where `localhost` would fail SAN verification. No cert/SAN change. Verified end-to-end: the container transitions to `healthy` (healthcheck exits 0, output `ok`).
+
+---
+
 ## 2026-07-09 (step-ca PostgreSQL backend)
 
 ### Features

@@ -24,6 +24,13 @@ services:
     depends_on:
       stepca-postgres:
         condition: service_healthy
+    # `step ca health` resolves CA_FQDN through Docker's embedded resolver
+    # (127.0.0.11), which cannot answer for the lab zone, so pin it to the
+    # local listener. This verifies against the cert SAN (CA_FQDN) instead of
+    # localhost (which would fail SAN verification). Matches the --add-host
+    # 127.0.0.1 idiom the service modules use for the same reason.
+    extra_hosts:
+      - "${CA_FQDN}:127.0.0.1"
     environment:
       DOCKER_STEPCA_INIT_NAME: "${CA_NAME}"
       DOCKER_STEPCA_INIT_DNS_NAMES: "${CA_FQDN}"
@@ -37,3 +44,8 @@ ${CA_ACME_ENV_BLOCK}
       - "${CA_PORT}:9000"
     volumes:
       - ${CA_DATA_DIR:?CA_DATA_DIR must be set (empty would create a blank bind-mount source)}:/home/step
+    healthcheck:
+      test: ["CMD-SHELL", "step ca health --ca-url https://${CA_FQDN}:9000 --root /home/step/certs/root_ca.crt | grep '^ok'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
