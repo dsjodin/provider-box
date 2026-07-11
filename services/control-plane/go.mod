@@ -10,4 +10,5 @@ require (
 	github.com/stretchr/testify v1.10.0 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
+	software.sslmate.com/src/go-pkcs12 v0.5.0 // indirect
 )

@@ -82,7 +82,10 @@ func main() {
 		engine.Register(deploy.Chrony{})
 		engine.Register(deploy.Rsyslog{})
 		engine.Register(deploy.CA{})
+		engine.Register(deploy.Technitium{})
+		engine.Register(deploy.Netbox{})
 		engine.Register(deploy.S3{})
+		engine.Register(deploy.DNSSync{})
 		opt.Engine = engine
 	} else {
 		logger.Warn("deploy engine disabled: example config not found", "path", cfg.ExamplePath)

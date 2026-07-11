@@ -7,7 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/dsjodin/provider-box/services/control-plane/internal/deploy"
 	"github.com/dsjodin/provider-box/services/control-plane/internal/envfile"
@@ -39,6 +43,8 @@ func (s *Server) registerControlPlane(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/config", s.handleConfigGet)
 	mux.HandleFunc("POST /api/config/validate", s.handleConfigValidate)
 	mux.HandleFunc("PUT /api/config", s.handleConfigPut)
+	mux.HandleFunc("GET /api/seed", s.handleSeedGet)
+	mux.HandleFunc("PUT /api/seed", s.handleSeedPut)
 	mux.HandleFunc("GET /api/services", s.handleServices)
 	mux.HandleFunc("POST /api/deploy", s.handleDeploy)
 	mux.HandleFunc("GET /api/deploys/{id}/events", s.handleDeployEvents)
@@ -126,6 +132,71 @@ func (s *Server) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// seedPath is the managed dns.seed location next to the managed config; the
+// netbox and dns-sync deployers read the same path.
+func (s *Server) seedPath() string {
+	return filepath.Join(filepath.Dir(s.opt.Engine.Store.Path), "dns.seed")
+}
+
+// handleSeedGet serves the managed dns.seed (empty when none is saved).
+func (s *Server) handleSeedGet(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	b, err := os.ReadFile(s.seedPath())
+	if err != nil && !os.IsNotExist(err) {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	_, _ = w.Write(b)
+}
+
+// handleSeedPut validates each record line (<fqdn> <ip[/cidr]>) and saves the
+// file; an empty body deletes it (dns.seed is optional).
+func (s *Server) handleSeedPut(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxConfigBytes+1))
+	if err != nil || len(body) > maxConfigBytes {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("bad or oversized seed file"))
+		return
+	}
+	if len(strings.TrimSpace(string(body))) == 0 {
+		_ = os.Remove(s.seedPath())
+		writeJSON(w, http.StatusOK, map[string]any{"saved": false, "removed": true})
+		return
+	}
+	if issues := validateSeed(body); len(issues) > 0 {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"issues": issues})
+		return
+	}
+	if err := os.WriteFile(s.seedPath(), body, 0o644); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"saved": true})
+}
+
+func validateSeed(content []byte) []string {
+	var issues []string
+	for i, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			issues = append(issues, fmt.Sprintf("line %d: expected <fqdn> <ip> or <fqdn> <ip/cidr>", i+1))
+			continue
+		}
+		value := fields[1]
+		if strings.Contains(value, "/") {
+			if _, err := netip.ParsePrefix(value); err != nil {
+				issues = append(issues, fmt.Sprintf("line %d: invalid CIDR %q", i+1, value))
+			}
+		} else if _, err := netip.ParseAddr(value); err != nil {
+			issues = append(issues, fmt.Sprintf("line %d: invalid IP %q", i+1, value))
+		}
+	}
+	return issues
 }
 
 type serviceInfo struct {

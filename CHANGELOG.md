@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## 2026-07-11 (control plane deploys the DNS chain: technitium, netbox, dns-sync)
+
+### Features
+- The deploy engine now covers the full DNS chain (Phase 4 of the v2 plan): Go ports of `bootstrap/technitium.sh`, `bootstrap/netbox.sh`, and `bootstrap/dns-sync.sh` with the same flows and data-preservation semantics. Highlights per deployer:
+  - **technitium**: pre-pull-before-down (DNS never goes down against an uncached image), port-53 test-bind preflight, PKCS#12 bundle built natively with go-pkcs12 (replaces openssl), forwarder + web-TLS configuration over the settings API, dns-sync token minting, dashboard user/grants/token, and host resolv.conf point/restore via the mounted `/host/etc`. NEW: the first-boot `admin`/`admin` credentials are rotated to `TECHNITIUM_ADMIN_PASSWORD` (new required variable) on first deploy and used on re-runs - closes IMPROVEMENTS #1 (default credentials window, broken re-runs after a manual password change).
+  - **netbox**: pepper resolution/persistence, API seeding with typed JSON payloads (site/manufacturer/device-type/role/device, canonical host IP, built-in service entries, dns.seed import), v2 Bearer token provisioning with legacy fallback, dns-sync + dashboard read-only token provisioning with description-tagged retirement. NEW: the per-run superuser seeding token is retired at the end of the deploy - closes IMPROVEMENTS #2 (leaked live superuser token per run).
+  - **dns-sync**: image built from source baked into the control-plane image (no repo checkout needed on the host), dns.seed import via dns-seed, pinned readiness gates against NetBox and Technitium, then real-DNS verification that `PROVIDER_BOX_FQDN` and every built-in service FQDN resolve via Technitium.
+- The config wizard now also manages `dns.seed` (edit/validate/save, saved next to the managed config); the netbox and dns-sync deployers read the same managed copy.
+- Deploying "all" from the UI now includes dns-sync automatically in the right order - the old "run --dns-sync after --all" caveat is gone on the control-plane path.
+
+---
+
 ## 2026-07-11 (control plane deploys step-ca)
 
 ### Features

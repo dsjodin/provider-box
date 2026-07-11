@@ -1,0 +1,14 @@
+services:
+  technitium:
+    image: docker.io/technitium/dns-server:15.3.0
+    restart: unless-stopped
+    environment:
+      DNS_SERVER_DOMAIN: "dns.sddc.lab"
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "5380:5380/tcp"
+      - "53443:53443/tcp"
+    volumes:
+      - /opt/provider-box/technitium/data:/etc/dns
+      - /opt/provider-box/technitium/certs:/etc/provider-box/technitium-certs:ro

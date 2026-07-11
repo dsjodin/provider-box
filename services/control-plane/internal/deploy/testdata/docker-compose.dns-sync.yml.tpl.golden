@@ -1,0 +1,29 @@
+services:
+  dns-sync:
+    image: provider-box/dns-sync:0.1.0
+    restart: unless-stopped
+    user: "1000:1000"
+    # host networking so the 127.0.0.1 pins reach the host-published NetBox
+    # and Technitium ports; on the default bridge, 127.0.0.1 would be the
+    # container's own loopback.
+    network_mode: host
+    extra_hosts:
+      - "netbox.sddc.lab:127.0.0.1"
+      - "dns.sddc.lab:127.0.0.1"
+    environment:
+      NETBOX_URL: "https://netbox.sddc.lab:8444"
+      NETBOX_TOKEN_FILE: "/run/provider-box/secrets/netbox.token"
+      NETBOX_CA_BUNDLE: "/etc/provider-box/certs/root_ca.crt"
+      TECHNITIUM_URL: "https://dns.sddc.lab:53443"
+      TECHNITIUM_TOKEN_FILE: "/run/provider-box/secrets/technitium.token"
+      TECHNITIUM_CA_BUNDLE: "/etc/provider-box/certs/root_ca.crt"
+      DNS_SYNC_INTERVAL: "30s"
+      DNS_SYNC_BUILTIN_RECORDS: "provider-box.sddc.lab=192.168.12.121"
+      # Non-admin Technitium user the read-only dashboard authenticates as.
+      # dns-sync grants it View on each newly created zone so continuously-synced
+      # zones appear in the dashboard without a technitium re-deploy. Best-effort;
+      # empty disables the grant.
+      DNS_SYNC_TECHNITIUM_DASHBOARD_USER: "dashboard"
+    volumes:
+      - /opt/provider-box/dns-sync/secrets:/run/provider-box/secrets:ro
+      - /opt/provider-box/step-ca/certs/root_ca.crt:/etc/provider-box/certs/root_ca.crt:ro

@@ -1,0 +1,68 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "netbox"
+      POSTGRES_USER: "netbox"
+      POSTGRES_PASSWORD: "nbpg"
+    volumes:
+      - /opt/provider-box/netbox/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netbox -d netbox"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - yes
+      - --requirepass
+      - nbredis
+    volumes:
+      - /opt/provider-box/netbox/redis:/data
+
+  netbox:
+    image: docker.io/netboxcommunity/netbox:v4.6.2
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      ALLOWED_HOSTS: "netbox.sddc.lab"
+      CSRF_TRUSTED_ORIGINS: "https://netbox.sddc.lab:8444"
+      DB_HOST: postgres
+      DB_NAME: "netbox"
+      DB_USER: "netbox"
+      DB_PASSWORD: "nbpg"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "nbredis"
+      REDIS_DATABASE: "0"
+      REDIS_CACHE_HOST: redis
+      REDIS_CACHE_PORT: "6379"
+      REDIS_CACHE_PASSWORD: "nbredis"
+      REDIS_CACHE_DATABASE: "1"
+      SECRET_KEY: "sk"
+      API_TOKEN_PEPPER_1: "pepper"
+      SUPERUSER_NAME: "admin"
+      SUPERUSER_EMAIL: "admin@sddc.lab"
+      SUPERUSER_PASSWORD: "nbsu"
+      SKIP_SUPERUSER: "false"
+    volumes:
+      - /opt/provider-box/netbox/media:/opt/netbox/netbox/media
+
+  netbox-https:
+    image: docker.io/library/nginx:1.31-alpine
+    restart: unless-stopped
+    depends_on:
+      - netbox
+    ports:
+      - "8444:8443"
+    volumes:
+      - /opt/provider-box/netbox/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/provider-box/netbox/certs:/etc/provider-box/certs:ro

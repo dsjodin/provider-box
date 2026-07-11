@@ -51,6 +51,18 @@
   </div>
   <div id="status"></div>
   <ul class="issues" id="issues"></ul>
+
+  <h2 style="font-size:15px;margin-top:28px">External DNS records (dns.seed, optional)</h2>
+  <p class="note">One record per line: <span class="mono">&lt;fqdn&gt; &lt;ip&gt;</span> or
+  <span class="mono">&lt;fqdn&gt; &lt;ip/cidr&gt;</span> for VCF nodes, gateways, and other
+  non-Provider-Box hosts. Imported into NetBox at deploy; NetBox is the source of
+  truth afterwards. Built-in service records are generated automatically - never add them here.
+  Save an empty box to remove the file.</p>
+  <textarea id="seed" spellcheck="false" style="height:20vh"></textarea>
+  <div class="actions">
+    <button class="primary" onclick="saveSeed()">Save records</button>
+  </div>
+  <div id="seedStatus"></div>
 </main>
 <script>
 const statusEl = document.getElementById('status');
@@ -104,7 +116,26 @@ async function save() {
     statusEl.textContent = data.error || 'Save rejected: variables are missing (see below).';
   }
 }
+async function loadSeed() {
+  const res = await fetch('/api/seed');
+  document.getElementById('seed').value = await res.text();
+}
+
+async function saveSeed() {
+  const el = document.getElementById('seedStatus');
+  const res = await fetch('/api/seed', { method: 'PUT', body: document.getElementById('seed').value });
+  const data = await res.json();
+  if (res.ok) {
+    el.className = 'ok';
+    el.textContent = data.removed ? 'Removed dns.seed.' : 'Saved dns.seed.';
+  } else {
+    el.className = 'bad';
+    el.textContent = (data.issues || [data.error]).join('; ');
+  }
+}
+
 load();
+loadSeed();
 </script>
 </body>
 </html>

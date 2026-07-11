@@ -18,6 +18,9 @@ COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
 COPY --from=build /out/control-plane /usr/local/bin/control-plane
 COPY config/provider-box.env.example /usr/local/share/provider-box/provider-box.env.example
+# dns-sync is built locally by the deploy engine; its source ships in the
+# image so no repo checkout is needed on the host.
+COPY services/dns-sync /usr/local/share/provider-box/services/dns-sync
 # No USER here: the legacy read-only compose deployment pins user 1000:1000
 # itself; install.sh runs the engine-enabled container as root so it can
 # create and chown service data dirs under /opt/provider-box.

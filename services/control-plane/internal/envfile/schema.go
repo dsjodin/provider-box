@@ -54,6 +54,51 @@ var schema = []requirement{
 	{"CA_POSTGRES_RO_USER", []string{"ca"}, []func(string) error{checkPgIdentifier}},
 	{"CA_POSTGRES_RO_PASSWORD", []string{"ca"}, []func(string) error{checkNotPlaceholder}},
 
+	// Technitium DNS (require_technitium_vars plus the admin password used to
+	// rotate the first-boot credentials).
+	{"DNS_FQDN", []string{"technitium"}, []func(string) error{checkFQDN}},
+	{"DNS_FORWARDER", []string{"technitium"}, []func(string) error{checkIPv4}},
+	{"TECHNITIUM_HTTP_PORT", []string{"technitium"}, []func(string) error{checkPort}},
+	{"TECHNITIUM_HTTPS_PORT", []string{"technitium"}, []func(string) error{checkPort}},
+	{"TECHNITIUM_DATA_DIR", []string{"technitium"}, []func(string) error{checkAbsPath}},
+	{"TECHNITIUM_CERT_DIR", []string{"technitium"}, []func(string) error{checkAbsPath}},
+	{"TECHNITIUM_IMAGE", []string{"technitium"}, []func(string) error{checkImage}},
+	{"TECHNITIUM_ADMIN_PASSWORD", []string{"technitium"}, []func(string) error{checkNotPlaceholder}},
+	{"DNS_SYNC_SECRETS_DIR", []string{"technitium", "dns-sync"}, []func(string) error{checkAbsPath}},
+
+	// NetBox (require_netbox_vars). Only netbox-owned variables: the built-in
+	// service seeding reads other services' FQDN/port vars but tolerates
+	// whatever the example defines, so they are not hard requirements here.
+	{"NETBOX_FQDN", []string{"netbox"}, []func(string) error{checkFQDN}},
+	{"NETBOX_PORT", []string{"netbox"}, []func(string) error{checkPort}},
+	{"NETBOX_DIR", []string{"netbox"}, []func(string) error{checkAbsPath}},
+	{"NETBOX_MEDIA_DIR", []string{"netbox"}, []func(string) error{checkAbsPath}},
+	{"NETBOX_POSTGRES_DATA_DIR", []string{"netbox"}, []func(string) error{checkAbsPath}},
+	{"NETBOX_REDIS_DATA_DIR", []string{"netbox"}, []func(string) error{checkAbsPath}},
+	{"NETBOX_IMAGE", []string{"netbox"}, []func(string) error{checkImage}},
+	{"NETBOX_POSTGRES_IMAGE", []string{"netbox"}, []func(string) error{checkImage}},
+	{"NETBOX_REDIS_IMAGE", []string{"netbox"}, []func(string) error{checkImage}},
+	{"NETBOX_NGINX_IMAGE", []string{"netbox"}, []func(string) error{checkImage}},
+	{"NETBOX_POSTGRES_DB", []string{"netbox"}, []func(string) error{checkPgIdentifier}},
+	{"NETBOX_POSTGRES_USER", []string{"netbox"}, []func(string) error{checkPgIdentifier}},
+	{"NETBOX_POSTGRES_PASSWORD", []string{"netbox"}, []func(string) error{checkNotPlaceholder}},
+	{"NETBOX_REDIS_PASSWORD", []string{"netbox"}, []func(string) error{checkNotPlaceholder}},
+	{"NETBOX_SECRET_KEY", []string{"netbox"}, []func(string) error{checkNotPlaceholder}},
+	{"NETBOX_ALLOWED_HOSTS", []string{"netbox"}, nil},
+	{"NETBOX_CSRF_TRUSTED_ORIGINS", []string{"netbox"}, nil},
+	{"NETBOX_SUPERUSER_NAME", []string{"netbox"}, nil},
+	{"NETBOX_SUPERUSER_EMAIL", []string{"netbox"}, []func(string) error{checkEmail}},
+	{"NETBOX_SUPERUSER_PASSWORD", []string{"netbox"}, []func(string) error{checkNotPlaceholder}},
+
+	// dns-sync (require_dns_sync_vars). Interval and URL shapes are checked
+	// in the deployer.
+	{"PROVIDER_BOX_FQDN", []string{"dns-sync"}, []func(string) error{checkFQDN}},
+	{"DNS_SYNC_IMAGE", []string{"dns-sync"}, []func(string) error{checkImage}},
+	{"DNS_SYNC_DIR", []string{"dns-sync"}, []func(string) error{checkAbsPath}},
+	{"DNS_SYNC_NETBOX_URL", []string{"dns-sync"}, nil},
+	{"DNS_SYNC_TECHNITIUM_URL", []string{"dns-sync"}, nil},
+	{"DNS_SYNC_INTERVAL", []string{"dns-sync"}, nil},
+
 	// SeaweedFS S3 (require_s3_vars).
 	{"S3_FQDN", []string{"s3"}, []func(string) error{checkFQDN}},
 	{"S3_PORT", []string{"s3"}, []func(string) error{checkPort}},

@@ -40,6 +40,45 @@ var testEnv = map[string]string{
 	"CA_ENABLE_ACME":                "true",
 	"CA_PASSWORD_FILE_IN_CONTAINER": "/home/step/secrets/password.txt",
 	"CA_PGPASSFILE_IN_CONTAINER":    "/home/step/secrets/pgpass",
+
+	"DNS_FQDN":              "dns.sddc.lab",
+	"TECHNITIUM_IMAGE":      "docker.io/technitium/dns-server:15.3.0",
+	"TECHNITIUM_HTTP_PORT":  "5380",
+	"TECHNITIUM_HTTPS_PORT": "53443",
+	"TECHNITIUM_DATA_DIR":   "/opt/provider-box/technitium/data",
+	"TECHNITIUM_CERT_DIR":   "/opt/provider-box/technitium/certs",
+
+	"NETBOX_FQDN":                "netbox.sddc.lab",
+	"NETBOX_PORT":                "8444",
+	"NETBOX_DIR":                 "/opt/provider-box/netbox",
+	"NETBOX_MEDIA_DIR":           "/opt/provider-box/netbox/media",
+	"NETBOX_POSTGRES_DATA_DIR":   "/opt/provider-box/netbox/postgres",
+	"NETBOX_REDIS_DATA_DIR":      "/opt/provider-box/netbox/redis",
+	"NETBOX_IMAGE":               "docker.io/netboxcommunity/netbox:v4.6.2",
+	"NETBOX_POSTGRES_IMAGE":      "docker.io/library/postgres:17-alpine",
+	"NETBOX_REDIS_IMAGE":         "docker.io/library/redis:7-alpine",
+	"NETBOX_NGINX_IMAGE":         "docker.io/library/nginx:1.31-alpine",
+	"NETBOX_POSTGRES_DB":         "netbox",
+	"NETBOX_POSTGRES_USER":       "netbox",
+	"NETBOX_POSTGRES_PASSWORD":   "nbpg",
+	"NETBOX_REDIS_PASSWORD":      "nbredis",
+	"NETBOX_SECRET_KEY":          "sk",
+	"NETBOX_API_TOKEN_PEPPER_1":  "pepper",
+	"NETBOX_ALLOWED_HOSTS":       "netbox.sddc.lab",
+	"NETBOX_CSRF_TRUSTED_ORIGINS": "https://netbox.sddc.lab:8444",
+	"NETBOX_SUPERUSER_NAME":      "admin",
+	"NETBOX_SUPERUSER_EMAIL":     "admin@sddc.lab",
+	"NETBOX_SUPERUSER_PASSWORD":  "nbsu",
+
+	"DNS_SYNC_IMAGE":                     "provider-box/dns-sync:0.1.0",
+	"DNS_SYNC_NETBOX_URL":                "https://netbox.sddc.lab:8444",
+	"DNS_SYNC_TECHNITIUM_URL":            "https://dns.sddc.lab:53443",
+	"DNS_SYNC_NETBOX_HOST":               "netbox.sddc.lab",
+	"DNS_SYNC_TECHNITIUM_HOST":           "dns.sddc.lab",
+	"DNS_SYNC_INTERVAL":                  "30s",
+	"DNS_SYNC_BUILTIN_RECORDS":           "provider-box.sddc.lab=192.168.12.121",
+	"DNS_SYNC_SECRETS_DIR":               "/opt/provider-box/dns-sync/secrets",
+	"DNS_SYNC_TECHNITIUM_DASHBOARD_USER": "dashboard",
 }
 
 // TestRenderGolden is the template parity harness: each converted template is
@@ -54,6 +93,10 @@ func TestRenderGolden(t *testing.T) {
 		"rsyslog.conf.tpl",
 		"docker-compose.rsyslog.yml.tpl",
 		"docker-compose.step-ca.yml.tpl",
+		"docker-compose.technitium.yml.tpl",
+		"docker-compose.netbox.yml.tpl",
+		"netbox-nginx.conf.tpl",
+		"docker-compose.dns-sync.yml.tpl",
 	} {
 		t.Run(name, func(t *testing.T) {
 			dest := filepath.Join(t.TempDir(), "out")

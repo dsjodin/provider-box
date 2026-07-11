@@ -100,6 +100,15 @@ func checkHourDuration(v string) error {
 	return nil
 }
 
+var emailRe = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+
+func checkEmail(v string) error {
+	if !emailRe.MatchString(v) {
+		return fmt.Errorf("invalid email address")
+	}
+	return nil
+}
+
 func checkBool(v string) error {
 	if v != "true" && v != "false" {
 		return fmt.Errorf("must be either true or false")
