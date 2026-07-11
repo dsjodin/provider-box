@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # One correct way to start the standalone dashboard. Runs the documented compose
-# command with the shared env file and resolves DASHBOARD_DOCKER_GID from the
+# command with the shared env file and resolves CONTROL_PLANE_DOCKER_GID from the
 # host docker group so the read-only socket mount is usable by uid 1000.
 #
-# Usage: services/dashboard/scripts/run.sh [ENV_FILE] [-- extra compose args]
+# Usage: services/control-plane/scripts/run.sh [ENV_FILE] [-- extra compose args]
 # ENV_FILE defaults to config/provider-box.env at the repo root.
-# Example: services/dashboard/scripts/run.sh            # up -d --build
-#          services/dashboard/scripts/run.sh -- down    # stop it
+# Example: services/control-plane/scripts/run.sh            # up -d --build
+#          services/control-plane/scripts/run.sh -- down    # stop it
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,7 +38,7 @@ set -a
 # shellcheck disable=SC1090
 source "${ENV_FILE}"
 set +a
-for var in CA_DATA_DIR DASHBOARD_CERT_DIR DASHBOARD_SECRETS_DIR; do
+for var in CA_DATA_DIR CONTROL_PLANE_CERT_DIR CONTROL_PLANE_SECRETS_DIR; do
   [[ -n "${!var:-}" ]] || fail "${var} is empty or unset in ${ENV_FILE}; refusing to run docker compose - an empty bind-mount source would create a blank host directory and can corrupt data."
   [[ "${!var}" == /* ]] || fail "${var} must be an absolute path (got '${!var}')."
 done
@@ -46,9 +46,9 @@ done
 # Resolve the host docker gid; a shell export overrides the env-file default so
 # the socket mount works without hand-editing config.
 if docker_gid="$(getent group docker | cut -d: -f3)" && [[ -n "${docker_gid}" ]]; then
-  export DASHBOARD_DOCKER_GID="${docker_gid}"
+  export CONTROL_PLANE_DOCKER_GID="${docker_gid}"
 else
-  echo "Warning: no 'docker' group found; leaving DASHBOARD_DOCKER_GID from ${ENV_FILE}." >&2
+  echo "Warning: no 'docker' group found; leaving CONTROL_PLANE_DOCKER_GID from ${ENV_FILE}." >&2
 fi
 
 # Default action is up -d --build; pass anything after -- to override.

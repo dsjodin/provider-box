@@ -14,11 +14,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dsjodin/provider-box/services/dashboard/internal/certs"
-	"github.com/dsjodin/provider-box/services/dashboard/internal/dns"
-	"github.com/dsjodin/provider-box/services/dashboard/internal/docker"
-	"github.com/dsjodin/provider-box/services/dashboard/internal/ipam"
-	"github.com/dsjodin/provider-box/services/dashboard/internal/logs"
+	"github.com/dsjodin/provider-box/services/control-plane/internal/certs"
+	"github.com/dsjodin/provider-box/services/control-plane/internal/dns"
+	"github.com/dsjodin/provider-box/services/control-plane/internal/docker"
+	"github.com/dsjodin/provider-box/services/control-plane/internal/ipam"
+	"github.com/dsjodin/provider-box/services/control-plane/internal/logs"
 )
 
 // Provider interfaces let the server run against real clients or test stubs.
@@ -155,7 +155,7 @@ func (s *Server) panelCtx(ctx context.Context) (context.Context, context.CancelF
 func (s *Server) collectCerts(ctx context.Context, now time.Time) CertsPanel {
 	p := CertsPanel{}
 	if s.opt.Certs == nil {
-		p.Status = disabled("DASHBOARD_STEPCA_DSN not set")
+		p.Status = disabled("CONTROL_PLANE_STEPCA_DSN not set")
 		return p
 	}
 	pctx, cancel := s.panelCtx(ctx)
@@ -173,7 +173,7 @@ func (s *Server) collectCerts(ctx context.Context, now time.Time) CertsPanel {
 func (s *Server) collectDNS(ctx context.Context) DNSPanel {
 	p := DNSPanel{}
 	if s.opt.DNS == nil {
-		p.Status = disabled("DASHBOARD_TECHNITIUM_URL/token not set")
+		p.Status = disabled("CONTROL_PLANE_TECHNITIUM_URL/token not set")
 		return p
 	}
 	pctx, cancel := s.panelCtx(ctx)
@@ -191,7 +191,7 @@ func (s *Server) collectDNS(ctx context.Context) DNSPanel {
 func (s *Server) collectIPAM(ctx context.Context) IPAMPanel {
 	p := IPAMPanel{}
 	if s.opt.IPAM == nil {
-		p.Status = disabled("DASHBOARD_NETBOX_URL/token not set")
+		p.Status = disabled("CONTROL_PLANE_NETBOX_URL/token not set")
 		return p
 	}
 	pctx, cancel := s.panelCtx(ctx)
@@ -212,8 +212,8 @@ func (s *Server) collectDocker(ctx context.Context, now time.Time) (ServicesPane
 	svc := ServicesPanel{}
 	errp := ErrorsPanel{}
 	if s.opt.Docker == nil {
-		svc.Status = disabled("DASHBOARD_DOCKER_HOST not available")
-		errp.Status = disabled("DASHBOARD_DOCKER_HOST not available")
+		svc.Status = disabled("CONTROL_PLANE_DOCKER_HOST not available")
+		errp.Status = disabled("CONTROL_PLANE_DOCKER_HOST not available")
 		return svc, errp
 	}
 

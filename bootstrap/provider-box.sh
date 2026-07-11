@@ -217,7 +217,7 @@ EOF
 # services are skipped.
 provider_box_builtin_fqdns() {
   local var
-  for var in PROVIDER_BOX_FQDN DNS_FQDN CA_FQDN DEPOT_FQDN KEYCLOAK_FQDN AUTHENTIK_FQDN NETBOX_FQDN S3_FQDN SFTP_FQDN SYSLOG_FQDN DASHBOARD_FQDN; do
+  for var in PROVIDER_BOX_FQDN DNS_FQDN CA_FQDN DEPOT_FQDN KEYCLOAK_FQDN AUTHENTIK_FQDN NETBOX_FQDN S3_FQDN SFTP_FQDN SYSLOG_FQDN CONTROL_PLANE_FQDN; do
     [[ -n "${!var:-}" ]] && printf '%s\n' "${!var}"
   done
   return 0
@@ -724,7 +724,7 @@ case "${TARGET_SERVICE}" in
       # The dashboard is a read-only view of the services above, so it runs
       # last. Its scoped upstream tokens are optional (panels degrade to
       # "not configured"), so --all stays coherent when they are unset. DNS
-      # resolution of DASHBOARD_FQDN lands after the post---all --dns-sync run.
+      # resolution of CONTROL_PLANE_FQDN lands after the post---all --dns-sync run.
       do_dashboard
     fi
     ;;

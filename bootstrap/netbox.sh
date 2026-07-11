@@ -553,19 +553,19 @@ netbox_probe_ipam_read() {
 # Prefix and IP address, a non-privileged service user in that group, and a
 # READ-ONLY token (write_enabled false, composite nbt_). An operator-placed
 # (SOPS/age) token always wins while NetBox still accepts it. Skipped with a
-# notice when DASHBOARD_SECRETS_DIR is unset so --netbox stays standalone.
+# notice when CONTROL_PLANE_SECRETS_DIR is unset so --netbox stays standalone.
 provision_dashboard_netbox_token() {
   local token_file stored code response key token composite token_id
   local group_id perm_id perm_payload user_id user_payload dash_pass
 
-  if [[ -z "${DASHBOARD_SECRETS_DIR:-}" ]]; then
-    echo "NOTICE: DASHBOARD_SECRETS_DIR is not set; skipping dashboard NetBox read-only token provisioning."
+  if [[ -z "${CONTROL_PLANE_SECRETS_DIR:-}" ]]; then
+    echo "NOTICE: CONTROL_PLANE_SECRETS_DIR is not set; skipping dashboard NetBox read-only token provisioning."
     return 0
   fi
-  validate_var_path "${DASHBOARD_SECRETS_DIR}"
-  token_file="${DASHBOARD_SECRETS_DIR}/netbox-readonly.token"
-  install -d -m 0700 "${DASHBOARD_SECRETS_DIR}"
-  chown 1000:1000 "${DASHBOARD_SECRETS_DIR}"
+  validate_var_path "${CONTROL_PLANE_SECRETS_DIR}"
+  token_file="${CONTROL_PLANE_SECRETS_DIR}/netbox-readonly.token"
+  install -d -m 0700 "${CONTROL_PLANE_SECRETS_DIR}"
+  chown 1000:1000 "${CONTROL_PLANE_SECRETS_DIR}"
 
   if [[ -s "${token_file}" ]]; then
     stored="$(cat "${token_file}")"

@@ -11,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dsjodin/provider-box/services/dashboard/internal/certs"
-	"github.com/dsjodin/provider-box/services/dashboard/internal/config"
-	"github.com/dsjodin/provider-box/services/dashboard/internal/dns"
-	"github.com/dsjodin/provider-box/services/dashboard/internal/docker"
-	"github.com/dsjodin/provider-box/services/dashboard/internal/ipam"
-	"github.com/dsjodin/provider-box/services/dashboard/internal/server"
+	"github.com/dsjodin/provider-box/services/control-plane/internal/certs"
+	"github.com/dsjodin/provider-box/services/control-plane/internal/config"
+	"github.com/dsjodin/provider-box/services/control-plane/internal/dns"
+	"github.com/dsjodin/provider-box/services/control-plane/internal/docker"
+	"github.com/dsjodin/provider-box/services/control-plane/internal/ipam"
+	"github.com/dsjodin/provider-box/services/control-plane/internal/server"
 )
 
 func main() {
@@ -95,7 +95,7 @@ func main() {
 	// HTTP, and reflect the mode actually used in the startup log.
 	useTLS := resolveTLS(cfg.TLSCert, cfg.TLSKey, logger)
 
-	logger.Info("starting dashboard",
+	logger.Info("starting control-plane",
 		"addr", cfg.Addr, "fqdn", cfg.FQDN, "tls", useTLS,
 		"certs", opt.Certs != nil, "dns", opt.DNS != nil,
 		"ipam", opt.IPAM != nil, "docker", opt.Docker != nil,
@@ -118,7 +118,7 @@ func main() {
 // crash-looping on a missing or malformed cert.
 func resolveTLS(certPath, keyPath string, logger *slog.Logger) bool {
 	if certPath == "" || keyPath == "" {
-		logger.Warn("no TLS cert configured (DASHBOARD_TLS_CERT/DASHBOARD_TLS_KEY); serving plaintext HTTP - do not use outside a trusted lab")
+		logger.Warn("no TLS cert configured (CONTROL_PLANE_TLS_CERT/CONTROL_PLANE_TLS_KEY); serving plaintext HTTP - do not use outside a trusted lab")
 		return false
 	}
 	if _, err := tls.LoadX509KeyPair(certPath, keyPath); err != nil {

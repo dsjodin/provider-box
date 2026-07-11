@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## 2026-07-10 (rename services/dashboard to services/control-plane)
+
+### Changes
+- `services/dashboard` is renamed to `services/control-plane` (git mv; Phase 1 of the Provider Box v2 plan). The service is unchanged functionally - it is still the read-only "current state" dashboard - but it is the foundation the v2 deploy engine and web UI build on.
+- Go module path is now `github.com/dsjodin/provider-box/services/control-plane`; the binary and image are `control-plane` (`CONTROL_PLANE_IMAGE="provider-box/control-plane:0.1.0"`).
+- Every `DASHBOARD_*` variable in `provider-box.env` is renamed to `CONTROL_PLANE_*` (same meanings and defaults; default cert/secrets paths move to `/opt/provider-box/control-plane/...`). `DNS_SYNC_TECHNITIUM_DASHBOARD_USER` and the read-only `dashboard` service accounts in Technitium/NetBox keep their names.
+- `scripts/issue-dashboard-cert.sh` is renamed to `scripts/issue-cert.sh`; the issued leaf is now `control-plane.crt`/`control-plane.key` (a redeploy reissues it).
+- The `--dashboard` bootstrap flag is unchanged and now deploys the renamed service.
+
+---
+
 ## 2026-07-10 (remove unbound; Technitium is the only DNS backend)
 
 ### Removed

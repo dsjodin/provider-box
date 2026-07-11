@@ -433,7 +433,7 @@ provision_technitium_api_token() {
 # section View plus per-zone View on every existing zone), and mints a permanent
 # API token carrying that user's deliberately limited privileges. An operator-
 # placed (SOPS/age) token always wins while Technitium still accepts it. Skipped
-# with a notice when DASHBOARD_SECRETS_DIR is unset so --technitium stays
+# with a notice when CONTROL_PLANE_SECRETS_DIR is unset so --technitium stays
 # standalone.
 #
 # The read grants are (re)applied on every run - before the token reuse check -
@@ -449,14 +449,14 @@ provision_technitium_dashboard_token() {
   local zones_json zone_names zone_name
   console_url="http://127.0.0.1:${TECHNITIUM_HTTP_PORT}"
 
-  if [[ -z "${DASHBOARD_SECRETS_DIR:-}" ]]; then
-    echo "NOTICE: DASHBOARD_SECRETS_DIR is not set; skipping dashboard Technitium token provisioning."
+  if [[ -z "${CONTROL_PLANE_SECRETS_DIR:-}" ]]; then
+    echo "NOTICE: CONTROL_PLANE_SECRETS_DIR is not set; skipping dashboard Technitium token provisioning."
     return 0
   fi
-  validate_var_path "${DASHBOARD_SECRETS_DIR}"
-  token_file="${DASHBOARD_SECRETS_DIR}/technitium.token"
-  install -d -m 0700 "${DASHBOARD_SECRETS_DIR}"
-  chown 1000:1000 "${DASHBOARD_SECRETS_DIR}"
+  validate_var_path "${CONTROL_PLANE_SECRETS_DIR}"
+  token_file="${CONTROL_PLANE_SECRETS_DIR}/technitium.token"
+  install -d -m 0700 "${CONTROL_PLANE_SECRETS_DIR}"
+  chown 1000:1000 "${CONTROL_PLANE_SECRETS_DIR}"
 
   admin_token="$(technitium_api_login_token)"
 

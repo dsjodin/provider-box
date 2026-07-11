@@ -45,29 +45,29 @@ type Config struct {
 // Load reads configuration from the environment.
 func Load() Config {
 	return Config{
-		Addr: envOr("DASHBOARD_ADDR", ":8443"),
-		FQDN: envOr("DASHBOARD_FQDN", "dashboard.sddc.lab"),
+		Addr: envOr("CONTROL_PLANE_ADDR", ":8443"),
+		FQDN: envOr("CONTROL_PLANE_FQDN", "dashboard.sddc.lab"),
 
-		TLSCert: os.Getenv("DASHBOARD_TLS_CERT"),
-		TLSKey:  os.Getenv("DASHBOARD_TLS_KEY"),
+		TLSCert: os.Getenv("CONTROL_PLANE_TLS_CERT"),
+		TLSKey:  os.Getenv("CONTROL_PLANE_TLS_KEY"),
 
-		StepCADSN:      os.Getenv("DASHBOARD_STEPCA_DSN"),
-		StepCAPassword: readToken("DASHBOARD_STEPCA_PG_PASSWORD_FILE", "DASHBOARD_STEPCA_PG_PASSWORD"),
-		CertWarnDays:   envInt("DASHBOARD_CERT_WARN_DAYS", 30),
+		StepCADSN:      os.Getenv("CONTROL_PLANE_STEPCA_DSN"),
+		StepCAPassword: readToken("CONTROL_PLANE_STEPCA_PG_PASSWORD_FILE", "CONTROL_PLANE_STEPCA_PG_PASSWORD"),
+		CertWarnDays:   envInt("CONTROL_PLANE_CERT_WARN_DAYS", 30),
 
-		TechnitiumURL:      os.Getenv("DASHBOARD_TECHNITIUM_URL"),
-		TechnitiumToken:    readToken("DASHBOARD_TECHNITIUM_TOKEN_FILE", "DASHBOARD_TECHNITIUM_TOKEN"),
-		TechnitiumCABundle: os.Getenv("DASHBOARD_TECHNITIUM_CA_BUNDLE"),
+		TechnitiumURL:      os.Getenv("CONTROL_PLANE_TECHNITIUM_URL"),
+		TechnitiumToken:    readToken("CONTROL_PLANE_TECHNITIUM_TOKEN_FILE", "CONTROL_PLANE_TECHNITIUM_TOKEN"),
+		TechnitiumCABundle: os.Getenv("CONTROL_PLANE_TECHNITIUM_CA_BUNDLE"),
 
-		NetboxURL:      os.Getenv("DASHBOARD_NETBOX_URL"),
-		NetboxToken:    readToken("DASHBOARD_NETBOX_TOKEN_FILE", "DASHBOARD_NETBOX_TOKEN"),
-		NetboxCABundle: os.Getenv("DASHBOARD_NETBOX_CA_BUNDLE"),
+		NetboxURL:      os.Getenv("CONTROL_PLANE_NETBOX_URL"),
+		NetboxToken:    readToken("CONTROL_PLANE_NETBOX_TOKEN_FILE", "CONTROL_PLANE_NETBOX_TOKEN"),
+		NetboxCABundle: os.Getenv("CONTROL_PLANE_NETBOX_CA_BUNDLE"),
 
-		DockerHost:       envOr("DASHBOARD_DOCKER_HOST", "unix:///var/run/docker.sock"),
-		ContainerFilters: splitCSV(envOr("DASHBOARD_CONTAINER_FILTERS", "step-ca,technitium,netbox,dns-sync,authentik,keycloak,depot,sftpgo,seaweedfs,dashboard")),
-		LogTail:          envInt("DASHBOARD_LOG_TAIL", 200),
+		DockerHost:       envOr("CONTROL_PLANE_DOCKER_HOST", "unix:///var/run/docker.sock"),
+		ContainerFilters: splitCSV(envOr("CONTROL_PLANE_CONTAINER_FILTERS", "step-ca,technitium,netbox,dns-sync,authentik,keycloak,depot,sftpgo,seaweedfs,control-plane")),
+		LogTail:          envInt("CONTROL_PLANE_LOG_TAIL", 200),
 
-		UpstreamTimeout: envDuration("DASHBOARD_UPSTREAM_TIMEOUT", 5*time.Second),
+		UpstreamTimeout: envDuration("CONTROL_PLANE_UPSTREAM_TIMEOUT", 5*time.Second),
 	}
 }
 

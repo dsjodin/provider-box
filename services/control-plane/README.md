@@ -8,9 +8,9 @@ Two supported ways to run it:
 
 - **Bootstrap module (recommended):** `sudo bash bootstrap/provider-box.sh
   --dashboard`. Also deployed by `--all` (last). This issues the cert, brings up
-  the stack, verifies HTTPS, and publishes `DASHBOARD_FQDN` via DNS. See
+  the stack, verifies HTTPS, and publishes `CONTROL_PLANE_FQDN` via DNS. See
   "Bootstrap module" below.
-- **Standalone / manual:** `services/dashboard/scripts/run.sh`, unchanged, for
+- **Standalone / manual:** `services/control-plane/scripts/run.sh`, unchanged, for
   running the service on its own without the bootstrap flow. See "Running it
   manually" below.
 
@@ -58,7 +58,7 @@ page or fails the request.
     cert tables; there is no signing path and no write path.
   - Docker socket is mounted `:ro`.
 - **Tokens come from files/env, never hardcoded, never logged.** The compose
-  file mounts them from `DASHBOARD_SECRETS_DIR` read-only.
+  file mounts them from `CONTROL_PLANE_SECRETS_DIR` read-only.
 - **The dashboard serves HTTPS** with a step-ca-issued cert for its FQDN. If no
   cert is configured it falls back to plaintext HTTP with a logged warning
   (lab only).
@@ -71,18 +71,18 @@ page or fails the request.
 
 `bootstrap/dashboard.sh` (flag `--dashboard`) wires this service into
 `provider-box.sh`. It does not rewrite the service - cert issuance and startup
-reuse `scripts/issue-dashboard-cert.sh` and `scripts/run.sh`, the same code the
+reuse `scripts/issue-cert.sh` and `scripts/run.sh`, the same code the
 manual path uses. The module follows the standard five-step flow:
 
-1. **Validate** the `DASHBOARD_*` variables and the CA variables (fail fast on
+1. **Validate** the `CONTROL_PLANE_*` variables and the CA variables (fail fast on
    an empty or malformed value).
-2. **Create** `DASHBOARD_CERT_DIR` and `DASHBOARD_SECRETS_DIR` owned by uid 1000
+2. **Create** `CONTROL_PLANE_CERT_DIR` and `CONTROL_PLANE_SECRETS_DIR` owned by uid 1000
    before anything writes to them.
 3. **Issue** the TLS cert from step-ca as a full chain (leaf + intermediate) via
-   `scripts/issue-dashboard-cert.sh`.
+   `scripts/issue-cert.sh`.
 4. **Start** the compose stack via `scripts/run.sh` (resolves the host docker
    gid, `--env-file provider-box.env`, `up -d --build`).
-5. **Verify** `https://${DASHBOARD_FQDN}:${port}/healthz` returns 200 over the
+5. **Verify** `https://${CONTROL_PLANE_FQDN}:${port}/healthz` returns 200 over the
    step-ca chain (bounded poll, fail fast).
 
 ```sh
@@ -95,7 +95,7 @@ sudo bash bootstrap/provider-box.sh --dashboard --remove
 ```
 
 **DNS:** `--dashboard` (via `provider_box_builtin_fqdns`) publishes
-`DASHBOARD_FQDN -> HOST_IP`: `dns-sync` synthesizes the record on its next
+`CONTROL_PLANE_FQDN -> HOST_IP`: `dns-sync` synthesizes the record on its next
 pass, so `dashboard.<domain>` resolves by name after `--dns-sync`.
 
 The scoped read-only tokens (below) are **optional** for the module - if absent,
@@ -114,17 +114,17 @@ Prerequisites: `--ca` deployed (for step-ca's postgres, the read-only role, and
 the root cert), and the services you want panels for (`--technitium`,
 `--netbox`, `--dns-sync`).
 
-1. **Add the dashboard variables to your config.** Copy the `DASHBOARD_*` block
+1. **Add the dashboard variables to your config.** Copy the `CONTROL_PLANE_*` block
    from `config/provider-box.env.example` into your `config/provider-box.env`
-   and adjust. (`scripts/run.sh` resolves `DASHBOARD_DOCKER_GID` from the host
+   and adjust. (`scripts/run.sh` resolves `CONTROL_PLANE_DOCKER_GID` from the host
    docker group automatically, so you can leave the example default.)
 
 2. **Issue the dashboard's TLS cert** from step-ca. This mirrors the technitium
    module's cert-issuance docker run and writes `dashboard.crt` (leaf + chain)
-   and `dashboard.key` into `DASHBOARD_CERT_DIR`, owned by uid 1000:
+   and `dashboard.key` into `CONTROL_PLANE_CERT_DIR`, owned by uid 1000:
 
    ```sh
-   services/dashboard/scripts/issue-dashboard-cert.sh
+   services/control-plane/scripts/issue-cert.sh
    ```
 
    (Pass a path as the first argument to use a non-default env file.) HTTPS is
@@ -132,7 +132,7 @@ the root cert), and the services you want panels for (`--technitium`,
    WARNING and falls back to plaintext HTTP rather than crash-looping - fine for
    a lab, but issue the cert for real use.
 
-3. **Provide the scoped read-only tokens** in `DASHBOARD_SECRETS_DIR`
+3. **Provide the scoped read-only tokens** in `CONTROL_PLANE_SECRETS_DIR`
    (mode 0600, owner uid 1000). See "Creating the read-only tokens" below.
    - `technitium.token` - a scoped Technitium API token.
    - `netbox-readonly.token` - a dedicated NetBox read-only token.
@@ -140,14 +140,14 @@ the root cert), and the services you want panels for (`--technitium`,
 4. **Start it:**
 
    ```sh
-   services/dashboard/scripts/run.sh
+   services/control-plane/scripts/run.sh
    ```
 
    This runs the documented compose command
    (`docker compose --env-file ../../config/provider-box.env up -d --build`) with
-   `DASHBOARD_DOCKER_GID` resolved from the host docker group. Then browse
-   `https://${DASHBOARD_FQDN}:8445/` (the `DASHBOARD_ADDR` port). To stop it:
-   `services/dashboard/scripts/run.sh -- down`.
+   `CONTROL_PLANE_DOCKER_GID` resolved from the host docker group. Then browse
+   `https://${CONTROL_PLANE_FQDN}:8445/` (the `CONTROL_PLANE_ADDR` port). To stop it:
+   `services/control-plane/scripts/run.sh -- down`.
 
 Any panel whose upstream URL/token/path is unset simply renders "not
 configured", so you can run with a subset of sources.
@@ -171,10 +171,10 @@ admin tokens.
 4. Write it to the secret file:
 
    ```sh
-   install -d -m 0700 "${DASHBOARD_SECRETS_DIR}"
-   printf '%s' 'nbt_...' > "${DASHBOARD_SECRETS_DIR}/netbox-readonly.token"
-   chmod 0600 "${DASHBOARD_SECRETS_DIR}/netbox-readonly.token"
-   chown 1000:1000 "${DASHBOARD_SECRETS_DIR}/netbox-readonly.token"
+   install -d -m 0700 "${CONTROL_PLANE_SECRETS_DIR}"
+   printf '%s' 'nbt_...' > "${CONTROL_PLANE_SECRETS_DIR}/netbox-readonly.token"
+   chmod 0600 "${CONTROL_PLANE_SECRETS_DIR}/netbox-readonly.token"
+   chown 1000:1000 "${CONTROL_PLANE_SECRETS_DIR}/netbox-readonly.token"
    ```
 
 The dashboard only ever GETs `ipam/prefixes` and `ipam/ip-addresses`, so a
@@ -188,25 +188,25 @@ so create a **non-admin** user and use its token (the dashboard only calls
    the `administrators` group.
 2. Create a permanent API token for it (console, or
    `/api/user/createToken?user=<u>&pass=<p>&tokenName=dashboard`).
-3. Write it to `${DASHBOARD_SECRETS_DIR}/technitium.token` with the same
+3. Write it to `${CONTROL_PLANE_SECRETS_DIR}/technitium.token` with the same
    `0600` / uid-1000 ownership as above.
 
 ## Configuration
 
-All settings are environment variables (see the `DASHBOARD_*` block in
+All settings are environment variables (see the `CONTROL_PLANE_*` block in
 `config/provider-box.env.example` for the documented set). The binary also
 reads them directly, so it can run outside Docker for development:
 
 ```sh
-DASHBOARD_ADDR=:8445 \
-DASHBOARD_STEPCA_DSN='postgresql://dashboard_ro@127.0.0.1:5432/stepca?sslmode=disable' \
-DASHBOARD_STEPCA_PG_PASSWORD=... \
-DASHBOARD_TECHNITIUM_URL=https://dns.sddc.lab:53443 \
-DASHBOARD_TECHNITIUM_TOKEN=... \
+CONTROL_PLANE_ADDR=:8445 \
+CONTROL_PLANE_STEPCA_DSN='postgresql://dashboard_ro@127.0.0.1:5432/stepca?sslmode=disable' \
+CONTROL_PLANE_STEPCA_PG_PASSWORD=... \
+CONTROL_PLANE_TECHNITIUM_URL=https://dns.sddc.lab:53443 \
+CONTROL_PLANE_TECHNITIUM_TOKEN=... \
 go run ./cmd/dashboard
 ```
 
-Without `DASHBOARD_TLS_CERT`/`DASHBOARD_TLS_KEY` it serves plaintext HTTP with a
+Without `CONTROL_PLANE_TLS_CERT`/`CONTROL_PLANE_TLS_KEY` it serves plaintext HTTP with a
 warning - fine for local development, not for the lab network.
 
 ## Phase 2 (explicitly out of scope for v1)

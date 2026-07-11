@@ -617,10 +617,10 @@ The SFTP protocol service remains separate from the HTTPS UI configuration.
 
 ### Dashboard (read-only)
 
-`services/dashboard` is a **read-only** "current state" view of the Provider Box
+`services/control-plane` is a **read-only** "current state" view of the Provider Box
 services. Deploy it with `--dashboard` (also run by `--all`, last) or run it
-standalone with `services/dashboard/scripts/run.sh` (see
-`services/dashboard/README.md`). It has its own listener and does not alter any
+standalone with `services/control-plane/scripts/run.sh` (see
+`services/control-plane/README.md`). It has its own listener and does not alter any
 other service.
 
 - **What it shows.** Five panels, each fetched on page load under its own short
@@ -630,19 +630,19 @@ other service.
      notBefore/notAfter, days-to-expiry against a warn threshold. Reads step-ca's
      dedicated postgres over `127.0.0.1:<CA_POSTGRES_PORT>` with a `SELECT`-only
      role, decoding the opaque cert blobs (see `STEPCA_STORAGE.md`). The RO
-     password is provisioned by `--dashboard` into `DASHBOARD_SECRETS_DIR`.
+     password is provisioned by `--dashboard` into `CONTROL_PLANE_SECRETS_DIR`.
   2. DNS (Technitium) - zones, managed record counts, forwarder, TLS reachability.
   3. IPAM (NetBox) - prefix/IP counts and the `dns_name` inventory.
   4. Services (Docker) - container state/health/uptime/image for the stacks.
   5. Recent errors - a bounded per-container log tail, parsing `dns-sync`'s slog
      JSON for `level>=error`.
-- **How to run it.** Add the `DASHBOARD_*` block from
+- **How to run it.** Add the `CONTROL_PLANE_*` block from
   `config/provider-box.env.example` to your `config/provider-box.env`, then
   `sudo bash bootstrap/provider-box.sh --dashboard` (issues the cert from
-  step-ca, brings up the stack, verifies HTTPS, and publishes `DASHBOARD_FQDN`).
+  step-ca, brings up the stack, verifies HTTPS, and publishes `CONTROL_PLANE_FQDN`).
   The scoped read-only tokens are optional - without them the NetBox/Technitium
   panels show "not configured". Standalone use is still supported via
-  `services/dashboard/scripts/run.sh`. HTTPS is default; a missing cert logs a
+  `services/control-plane/scripts/run.sh`. HTTPS is default; a missing cert logs a
   warning and falls back to HTTP rather than failing to start.
 - **Security posture.** Read-only everywhere (no upstream write path). It uses a
   **dedicated minimum-read-scope NetBox token** (never the dns-sync/bootstrap
@@ -673,7 +673,7 @@ All flags are passed to `sudo bash bootstrap/provider-box.sh <flag>`. "Depends o
 | `--s3` | SeaweedFS S3-compatible storage | none | `S3_DATA_DIR`; runtime under `WORKDIR/s3` | `S3_PORT`/tcp | none (credentials come from env) | removes runtime dir; preserves `S3_DATA_DIR` |
 | `--sftp` | SFTPGo file transfer | `--ca` | `SFTP_DATA_DIR`, `SFTP_HOME_DIR`, `SFTP_CERT_DIR`; runtime under `WORKDIR/sftpgo` | `SFTP_PORT`/tcp, `SFTP_ADMIN_PORT`/tcp | none (credentials come from env) | removes runtime dir; preserves data, home, and certs |
 | `--dns-sync` | NetBox-to-Technitium reconcile loop | `--ca`, `--technitium`, `--netbox` | `DNS_SYNC_DIR`, `DNS_SYNC_SECRETS_DIR`; runtime under `WORKDIR/dns-sync` | none (host networking, outbound only) | none (consumes tokens created by `--netbox` and `--technitium`) | removes runtime dir; preserves `DNS_SYNC_SECRETS_DIR` |
-| `--dashboard` | Read-only "current state" view of the services | `--ca` (reads `--netbox`, `--technitium`, `--dns-sync`, Docker when present) | `DASHBOARD_CERT_DIR`, `DASHBOARD_SECRETS_DIR`; runs the compose under `services/dashboard` | `DASHBOARD_ADDR` port (host networking) | none (issues its own leaf cert; scoped read-only tokens are operator-placed and optional) | brings the container down; preserves `DASHBOARD_CERT_DIR` and `DASHBOARD_SECRETS_DIR` |
+| `--dashboard` | Read-only "current state" view of the services | `--ca` (reads `--netbox`, `--technitium`, `--dns-sync`, Docker when present) | `CONTROL_PLANE_CERT_DIR`, `CONTROL_PLANE_SECRETS_DIR`; runs the compose under `services/control-plane` | `CONTROL_PLANE_ADDR` port (host networking) | none (issues its own leaf cert; scoped read-only tokens are operator-placed and optional) | brings the container down; preserves `CONTROL_PLANE_CERT_DIR` and `CONTROL_PLANE_SECRETS_DIR` |
 | `--all` | Deploy everything except dns-sync (dashboard included, last) | n/a | see individual modules | see individual modules | see individual modules | `--all --remove` removes the dashboard, SFTPGo, S3, NetBox, Authentik, Keycloak, depot, and step-ca only |
 
 Notes:
