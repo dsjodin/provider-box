@@ -35,6 +35,25 @@ var schema = []requirement{
 	{"SYSLOG_LOG_DIR", []string{"rsyslog"}, []func(string) error{checkAbsPath}},
 	{"RSYSLOG_IMAGE", []string{"rsyslog"}, []func(string) error{checkImage}},
 
+	// step-ca (require_ca_vars). Cross-field rules (paths nested correctly,
+	// RO role differs from owner) live in the CA deployer.
+	{"CA_FQDN", []string{"ca"}, []func(string) error{checkFQDN}},
+	{"CA_PORT", []string{"ca"}, []func(string) error{checkPort}},
+	{"CA_DATA_DIR", []string{"ca"}, []func(string) error{checkAbsPath}},
+	{"CA_NAME", []string{"ca"}, nil},
+	{"CA_PROVISIONER_NAME", []string{"ca"}, nil},
+	{"SERVICE_CERT_DURATION", []string{"ca"}, []func(string) error{checkNotPlaceholder, checkHourDuration}},
+	{"CA_ENABLE_ACME", []string{"ca"}, []func(string) error{checkBool}},
+	{"CA_IMAGE", []string{"ca"}, []func(string) error{checkImage}},
+	{"CA_POSTGRES_IMAGE", []string{"ca"}, []func(string) error{checkImage}},
+	{"CA_POSTGRES_DB", []string{"ca"}, []func(string) error{checkPgIdentifier}},
+	{"CA_POSTGRES_USER", []string{"ca"}, []func(string) error{checkPgIdentifier}},
+	{"CA_POSTGRES_PASSWORD", []string{"ca"}, []func(string) error{checkNotPlaceholder}},
+	{"CA_POSTGRES_PORT", []string{"ca"}, []func(string) error{checkPort}},
+	{"CA_POSTGRES_DATA_DIR", []string{"ca"}, []func(string) error{checkAbsPath}},
+	{"CA_POSTGRES_RO_USER", []string{"ca"}, []func(string) error{checkPgIdentifier}},
+	{"CA_POSTGRES_RO_PASSWORD", []string{"ca"}, []func(string) error{checkNotPlaceholder}},
+
 	// SeaweedFS S3 (require_s3_vars).
 	{"S3_FQDN", []string{"s3"}, []func(string) error{checkFQDN}},
 	{"S3_PORT", []string{"s3"}, []func(string) error{checkPort}},

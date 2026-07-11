@@ -24,6 +24,22 @@ var testEnv = map[string]string{
 	"RSYSLOG_IMAGE":   "provider-box/rsyslog:0.1.0",
 	"SYSLOG_PORT":     "514",
 	"SYSLOG_LOG_DIR":  "/opt/provider-box/syslog/logs",
+
+	"CA_IMAGE":                      "docker.io/smallstep/step-ca:0.30.2",
+	"CA_POSTGRES_IMAGE":             "docker.io/library/postgres:17-alpine",
+	"CA_POSTGRES_DB":                "stepca",
+	"CA_POSTGRES_USER":              "stepca",
+	"CA_POSTGRES_PASSWORD":          "pgpw",
+	"CA_POSTGRES_PORT":              "5432",
+	"CA_POSTGRES_DATA_DIR":          "/opt/provider-box/stepca-postgres",
+	"CA_DATA_DIR":                   "/opt/provider-box/step-ca",
+	"CA_FQDN":                       "ca.sddc.lab",
+	"CA_PORT":                       "9000",
+	"CA_NAME":                       "Provider Box CA",
+	"CA_PROVISIONER_NAME":           "admin",
+	"CA_ENABLE_ACME":                "true",
+	"CA_PASSWORD_FILE_IN_CONTAINER": "/home/step/secrets/password.txt",
+	"CA_PGPASSFILE_IN_CONTAINER":    "/home/step/secrets/pgpass",
 }
 
 // TestRenderGolden is the template parity harness: each converted template is
@@ -37,6 +53,7 @@ func TestRenderGolden(t *testing.T) {
 		"docker-compose.chrony.yml.tpl",
 		"rsyslog.conf.tpl",
 		"docker-compose.rsyslog.yml.tpl",
+		"docker-compose.step-ca.yml.tpl",
 	} {
 		t.Run(name, func(t *testing.T) {
 			dest := filepath.Join(t.TempDir(), "out")
@@ -48,6 +65,11 @@ func TestRenderGolden(t *testing.T) {
 				t.Fatal(err)
 			}
 			golden := filepath.Join("testdata", name+".golden")
+			if os.Getenv("UPDATE_GOLDEN") == "1" {
+				if err := os.WriteFile(golden, got, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 			want, err := os.ReadFile(golden)
 			if err != nil {
 				t.Fatal(err)

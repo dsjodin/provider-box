@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## 2026-07-11 (control plane deploys step-ca)
+
+### Features
+- The deploy engine now deploys step-ca with its dedicated PostgreSQL backend (Phase 3 of the v2 plan): a full Go port of `bootstrap/ca.sh` in `services/control-plane/internal/deploy/ca.go`. Password-file materialization (existing file / `CA_PASSWORD` / generated), the `.pgpass` writer with `:`/`\` escaping, uid-70 postgres dir prep, the badger-to-postgres `ca.json` rewrite (encoding/json replaces jq), the fresh-root-vs-nonempty-store guard, the corrupted-root_ca.crt guard, CRL enablement, provisioner duration configuration, and the read-only role provisioning (now over pgx to the loopback-published port instead of psql-in-container) all behave as in the bash module.
+- Shared step-ca helpers for every certificate consumer (`internal/deploy/stepca.go`): `IssueCert` (step CLI container, full-chain guarantee, cert-identity reuse), `WaitHTTPSPinned` (Go equivalent of `curl --resolve fqdn:port:127.0.0.1 --cacert root_ca.crt`), and a native x509 port of `certificate_matches_dns_identity`.
+- After deploying the CA, the engine issues the control plane's own leaf certificate; `install.sh` points `CONTROL_PLANE_TLS_CERT`/`_KEY` at it, so a container restart upgrades the UI from HTTP to HTTPS.
+
+---
+
 ## 2026-07-11 (control plane deploy engine, config wizard, install.sh)
 
 ### Features

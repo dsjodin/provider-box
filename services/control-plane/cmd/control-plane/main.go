@@ -78,9 +78,10 @@ func main() {
 		store := envfile.Store{Path: cfg.ConfigPath, ExamplePath: cfg.ExamplePath}
 		engine := deploy.NewEngine(store, &deploy.StateStore{Path: cfg.StatePath}, logger)
 		// Registration order is the --all deploy order: no-dependency services
-		// first; certificate consumers join after the CA deployer is ported.
+		// first, then the CA, then certificate consumers as they are ported.
 		engine.Register(deploy.Chrony{})
 		engine.Register(deploy.Rsyslog{})
+		engine.Register(deploy.CA{})
 		engine.Register(deploy.S3{})
 		opt.Engine = engine
 	} else {

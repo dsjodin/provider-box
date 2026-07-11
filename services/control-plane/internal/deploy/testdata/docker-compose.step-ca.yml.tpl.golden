@@ -1,0 +1,50 @@
+services:
+  stepca-postgres:
+    image: docker.io/library/postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "stepca"
+      POSTGRES_USER: "stepca"
+      POSTGRES_PASSWORD: "pgpw"
+    # Loopback-only publish so the host-networked control plane can read the
+    # cert tables over 127.0.0.1 with its SELECT-only role. Never expose off-host.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - /opt/provider-box/stepca-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stepca -d stepca"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  step-ca:
+    image: docker.io/smallstep/step-ca:0.30.2
+    restart: unless-stopped
+    depends_on:
+      stepca-postgres:
+        condition: service_healthy
+    # `step ca health` resolves CA_FQDN through Docker's embedded resolver
+    # (127.0.0.11), which cannot answer for the lab zone, so pin it to the
+    # local listener. This verifies against the cert SAN (CA_FQDN) instead of
+    # localhost (which would fail SAN verification).
+    extra_hosts:
+      - "ca.sddc.lab:127.0.0.1"
+    environment:
+      DOCKER_STEPCA_INIT_NAME: "Provider Box CA"
+      DOCKER_STEPCA_INIT_DNS_NAMES: "ca.sddc.lab"
+      DOCKER_STEPCA_INIT_PROVISIONER_NAME: "admin"
+      DOCKER_STEPCA_INIT_PASSWORD_FILE: "/home/step/secrets/password.txt"
+      # pgx reads the postgres password from this file (libpq .pgpass format),
+      # keeping it out of the dataSource DSN in ca.json.
+      PGPASSFILE: "/home/step/secrets/pgpass"
+      DOCKER_STEPCA_INIT_ACME: "true"
+    ports:
+      - "9000:9000"
+    volumes:
+      - /opt/provider-box/step-ca:/home/step
+    healthcheck:
+      test: ["CMD-SHELL", "step ca health --ca-url https://ca.sddc.lab:9000 --root /home/step/certs/root_ca.crt | grep '^ok'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10

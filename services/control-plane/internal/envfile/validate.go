@@ -82,6 +82,31 @@ func checkListenAddr(v string) error {
 	return checkPort(v[i+1:])
 }
 
+// checkPgIdentifier keeps role/db names safe for direct SQL interpolation
+// (the CA module's read-only role provisioning), same rule as the bash
+// validate_pg_identifier.
+func checkPgIdentifier(v string) error {
+	if !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`).MatchString(v) {
+		return fmt.Errorf("must be a valid PostgreSQL identifier ([A-Za-z_][A-Za-z0-9_]*)")
+	}
+	return nil
+}
+
+// checkHourDuration enforces the SERVICE_CERT_DURATION shape (e.g. 8760h).
+func checkHourDuration(v string) error {
+	if !regexp.MustCompile(`^[0-9]+h$`).MatchString(v) {
+		return fmt.Errorf("must be an hour duration such as 8760h")
+	}
+	return nil
+}
+
+func checkBool(v string) error {
+	if v != "true" && v != "false" {
+		return fmt.Errorf("must be either true or false")
+	}
+	return nil
+}
+
 // DeriveHostIP returns the raw IPv4 and the surrounding network CIDR from a
 // HOST_IP value like 192.168.12.121/24 (the Go port of derive_host_ip_fields).
 func DeriveHostIP(hostIP string) (ipv4, networkCIDR string, err error) {
