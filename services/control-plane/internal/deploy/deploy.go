@@ -126,6 +126,13 @@ func (e *Engine) Resolve(selection []string) ([]string, error) {
 // Start validates the request and launches a deploy (or removal) in the
 // background. It returns the run ID, or an error when a deploy is already in
 // flight (single-flight) or validation fails.
+//
+// Explicitly selected services always run (idempotent redeploy). A dependency
+// that was only pulled in by expansion is skipped when its last deploy
+// succeeded - selecting technitium after ca is already up deploys just
+// technitium. If the recorded state is stale (the dependency is actually
+// down), the dependent deployer's own readiness gate fails with a pointed
+// "deploy <dep> first" error rather than silently misbehaving.
 func (e *Engine) Start(selection []string, remove bool) (int, error) {
 	ordered, err := e.Resolve(selection)
 	if err != nil {
@@ -133,6 +140,8 @@ func (e *Engine) Start(selection []string, remove bool) (int, error) {
 	}
 	if remove {
 		slices.Reverse(ordered)
+	} else {
+		ordered = e.skipDeployedDeps(selection, ordered)
 	}
 
 	content, ok, err := e.Store.Load()
@@ -175,6 +184,29 @@ func (e *Engine) Start(selection []string, remove bool) (int, error) {
 }
 
 var ErrBusy = fmt.Errorf("a deploy is already running")
+
+// skipDeployedDeps drops services that were added only by dependency
+// expansion and whose last recorded deploy succeeded. "all" selects
+// everything explicitly, so nothing is skipped there.
+func (e *Engine) skipDeployedDeps(selection, ordered []string) []string {
+	if slices.Contains(selection, "all") || e.State == nil {
+		return ordered
+	}
+	state := e.State.Snapshot()
+	var out []string
+	for _, name := range ordered {
+		if slices.Contains(selection, name) {
+			out = append(out, name)
+			continue
+		}
+		st, ok := state.Services[name]
+		if ok && st.LastAction == "deploy" && st.Result == "ok" {
+			continue // dependency already deployed; its consumer's gate re-verifies
+		}
+		out = append(out, name)
+	}
+	return out
+}
 
 // Run returns a run by ID for SSE subscription.
 func (e *Engine) Run(id int) *Run {
