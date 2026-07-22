@@ -17,22 +17,19 @@ services:
   zitadel:
     image: {{.ZITADEL_IMAGE}}
     restart: unless-stopped
-    command: start-from-init --masterkeyFromEnv --tlsMode enabled
+    # TLS is terminated by the proxy below; the core serves plain HTTP on 8080
+    # and trusts the proxy's X-Forwarded-Proto (ExternalSecure=true).
+    command: start-from-init --masterkeyFromEnv --tlsMode external
     depends_on:
       db:
         condition: service_healthy
     environment:
       ZITADEL_MASTERKEY: "{{.ZITADEL_MASTERKEY}}"
-      ZITADEL_TLS_ENABLED: "true"
-      ZITADEL_TLS_CERTPATH: /certs/zitadel.crt
-      ZITADEL_TLS_KEYPATH: /certs/zitadel.key
       ZITADEL_EXTERNALDOMAIN: "{{.ZITADEL_FQDN}}"
       ZITADEL_EXTERNALPORT: "{{.ZITADEL_PORT}}"
       ZITADEL_EXTERNALSECURE: "true"
-      # v4 defaults new instances to the decoupled Login V2 container; keep the
-      # legacy login bundled in this core container so a single container serves
-      # the interactive sign-in flow (served at /ui/login).
-      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
+      # v4: require the decoupled Login V2 UI (the `login` service below).
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "true"
       ZITADEL_DATABASE_POSTGRES_HOST: db
       ZITADEL_DATABASE_POSTGRES_PORT: "5432"
       ZITADEL_DATABASE_POSTGRES_DATABASE: "{{.ZITADEL_PG_DB}}"
@@ -45,12 +42,41 @@ services:
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: "{{.ZITADEL_ADMIN_USERNAME}}"
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: "{{.ZITADEL_ADMIN_PASSWORD}}"
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "false"
+      # Admin service account whose PAT the control plane reads to provision the
+      # bootstrap project/app/user post-deploy.
       ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: labprovider-admin-sa
       ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: labprovider-admin-sa
       ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
       ZITADEL_FIRSTINSTANCE_PATPATH: /machinekey/pat.txt
-    ports:
-      - "{{.ZITADEL_PORT}}:8080"
+      # Login-client service account the Login V2 container authenticates with.
+      # On a fresh install the setup job creates it and writes its PAT here.
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: login-client
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: Login Client
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
+      ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /machinekey/login-client.pat
     volumes:
-      - {{.ZITADEL_DIR}}/certs/{{.ZITADEL_FQDN}}:/certs:ro
       - {{.WORKDIR}}/zitadel/machinekey:/machinekey
+
+  login:
+    image: {{.ZITADEL_LOGIN_IMAGE}}
+    restart: unless-stopped
+    depends_on:
+      - zitadel
+    environment:
+      ZITADEL_API_URL: http://zitadel:8080
+      ZITADEL_SERVICE_USER_TOKEN_FILE: /machinekey/login-client.pat
+      NEXT_PUBLIC_BASE_PATH: /ui/v2/login
+    volumes:
+      - {{.WORKDIR}}/zitadel/machinekey:/machinekey:ro
+
+  proxy:
+    image: {{.ZITADEL_NGINX_IMAGE}}
+    restart: unless-stopped
+    depends_on:
+      - zitadel
+      - login
+    ports:
+      - "{{.ZITADEL_PORT}}:8443"
+    volumes:
+      - {{.WORKDIR}}/zitadel/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - {{.ZITADEL_DIR}}/certs/{{.ZITADEL_FQDN}}:/etc/labprovider/certs:ro

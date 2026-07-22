@@ -17,12 +17,15 @@ import (
 )
 
 // Zitadel deploys the Zitadel identity provider (OIDC), a sibling of the
-// Keycloak and Authentik deployers. It runs a Postgres backend plus the
-// Zitadel server, which serves the step-ca-issued certificate directly (no
-// self-signed bootstrap window, unlike Authentik). A machine user and its PAT
-// are minted by Zitadel's FirstInstance init and written to a mounted file;
-// the post-deploy step reads that PAT and drives the Management API to create
-// the bootstrap project, OIDC application, lab user, and role.
+// Keycloak and Authentik deployers. Zitadel v4 uses the decoupled Login V2 UI,
+// so the stack is four containers: a Postgres backend, the core server (plain
+// HTTP), the login container, and an nginx terminator that serves the
+// step-ca-issued certificate and routes /ui/v2/login to the login container and
+// everything else to the core. Zitadel's FirstInstance init mints an admin
+// service account (whose PAT the post-deploy step reads to provision the
+// bootstrap project, OIDC application, lab user, and role via the Management
+// API) and the login-client service account (whose PAT the login container
+// authenticates with).
 type Zitadel struct{}
 
 func (Zitadel) Name() string   { return "zitadel" }
@@ -60,8 +63,8 @@ func (z Zitadel) Deploy(ctx context.Context, rc *RunCtx) error {
 	if err := chownR(filepath.Join(env["ZITADEL_DIR"], "postgres"), 70, 70); err != nil {
 		return err
 	}
-	// The Zitadel container runs as uid 1000 and writes the machine-user PAT
-	// into this directory, so it must be owned by that uid.
+	// The Zitadel container runs as uid 1000 and writes the admin and
+	// login-client PATs into this directory, so it must be owned by that uid.
 	if err := EnsureDir(machinekey, 0o755, 1000, 1000); err != nil {
 		return err
 	}
@@ -71,6 +74,9 @@ func (z Zitadel) Deploy(ctx context.Context, rc *RunCtx) error {
 	}
 
 	if err := Render("docker-compose.zitadel.yml.tpl", env, runtime+"/docker-compose.yml", 0o644); err != nil {
+		return err
+	}
+	if err := Render("zitadel-nginx.conf.tpl", env, runtime+"/nginx.conf", 0o644); err != nil {
 		return err
 	}
 	cmp := rc.Compose("zitadel")
@@ -101,7 +107,7 @@ func (z Zitadel) Deploy(ctx context.Context, rc *RunCtx) error {
 		return err
 	}
 
-	rc.Log("Zitadel is ready at %s (OIDC discovery under /.well-known/openid-configuration).", api.base())
+	rc.Log("Zitadel is ready at %s (Login V2 UI at /ui/v2/login, OIDC discovery under /.well-known/openid-configuration).", api.base())
 	return nil
 }
 

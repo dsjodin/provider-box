@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## 2026-07-22 (Zitadel uses the v4 Login V2 UI)
+
+### Changes
+- Switched the Zitadel deployer from the bundled legacy login to Zitadel v4's decoupled Login V2. The stack is now four containers: PostgreSQL 17, the core server (plain HTTP, `--tlsMode external`), the `zitadel-login` container, and an nginx TLS terminator that serves the step-ca certificate and routes `/ui/v2/login` to the login container and everything else to the core. This keeps multi-tenant flows on the actively developed login (Login V1 is deprecated).
+  - Core enables `ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED=true` and, on fresh install, auto-creates the `login-client` service account, writing its PAT to `WORKDIR/zitadel/machinekey/login-client.pat` (via `ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH`); the login container reads it through `ZITADEL_SERVICE_USER_TOKEN_FILE`.
+  - New config: `ZITADEL_LOGIN_IMAGE` (`ghcr.io/zitadel/zitadel-login`, track `ZITADEL_IMAGE`) and `ZITADEL_NGINX_IMAGE`. New template `zitadel-nginx.conf.tpl` (mirrors the depot/netbox terminator pattern).
+
+---
+
 ## 2026-07-22 (control plane deploys Zitadel as a third IdP)
 
 ### Features

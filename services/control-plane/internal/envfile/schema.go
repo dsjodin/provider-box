@@ -149,6 +149,8 @@ var schema = []requirement{
 	{"ZITADEL_FQDN", []string{"zitadel"}, []func(string) error{checkFQDN}},
 	{"ZITADEL_PORT", []string{"zitadel"}, []func(string) error{checkPort}},
 	{"ZITADEL_IMAGE", []string{"zitadel"}, []func(string) error{checkImage}},
+	{"ZITADEL_LOGIN_IMAGE", []string{"zitadel"}, []func(string) error{checkImage}},
+	{"ZITADEL_NGINX_IMAGE", []string{"zitadel"}, []func(string) error{checkImage}},
 	{"ZITADEL_POSTGRES_IMAGE", []string{"zitadel"}, []func(string) error{checkImage}},
 	{"ZITADEL_MASTERKEY", []string{"zitadel"}, []func(string) error{checkNotPlaceholder}},
 	{"ZITADEL_ADMIN_USERNAME", []string{"zitadel"}, []func(string) error{checkNotPlaceholder}},

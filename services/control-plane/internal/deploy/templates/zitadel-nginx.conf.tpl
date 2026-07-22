@@ -1,0 +1,29 @@
+server {
+  listen 8443 ssl;
+  server_name {{.ZITADEL_FQDN}};
+
+  ssl_certificate /etc/labprovider/certs/zitadel.crt;
+  ssl_certificate_key /etc/labprovider/certs/zitadel.key;
+
+  client_max_body_size 10m;
+
+  # Login V2 UI. Zitadel core redirects every sign-in to /ui/v2/login, which is
+  # served by the separate login container (not by the core).
+  location /ui/v2/login/ {
+    proxy_pass http://login:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+  }
+
+  # Everything else (OIDC, Console, and the REST/Connect API the control plane
+  # provisions against) goes to the core over HTTP/1.1.
+  location / {
+    proxy_pass http://zitadel:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+  }
+}
