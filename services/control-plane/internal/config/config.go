@@ -72,7 +72,7 @@ func Load() Config {
 		NetboxCABundle: os.Getenv("CONTROL_PLANE_NETBOX_CA_BUNDLE"),
 
 		DockerHost:       envOr("CONTROL_PLANE_DOCKER_HOST", "unix:///var/run/docker.sock"),
-		ContainerFilters: splitCSV(envOr("CONTROL_PLANE_CONTAINER_FILTERS", "step-ca,technitium,netbox,dns-sync,authentik,keycloak,depot,sftpgo,seaweedfs,control-plane")),
+		ContainerFilters: splitCSV(envOr("CONTROL_PLANE_CONTAINER_FILTERS", "step-ca,technitium,netbox,dns-sync,authentik,keycloak,zitadel,depot,sftpgo,seaweedfs,control-plane")),
 		LogTail:          envInt("CONTROL_PLANE_LOG_TAIL", 200),
 
 		UpstreamTimeout: envDuration("CONTROL_PLANE_UPSTREAM_TIMEOUT", 5*time.Second),

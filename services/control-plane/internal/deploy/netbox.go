@@ -365,6 +365,7 @@ func builtinServiceEntries(env map[string]string) []builtinService {
 		{"depot-http", env["DEPOT_FQDN"], "tcp", env["DEPOT_HTTP_PORT"]},
 		{"depot-https", env["DEPOT_FQDN"], "tcp", env["DEPOT_HTTPS_PORT"]},
 		{"keycloak", env["KEYCLOAK_FQDN"], "tcp", env["KEYCLOAK_PORT"]},
+		{"zitadel", env["ZITADEL_FQDN"], "tcp", env["ZITADEL_PORT"]},
 		{"netbox", env["NETBOX_FQDN"], "tcp", env["NETBOX_PORT"]},
 		{"s3", env["S3_FQDN"], "tcp", env["S3_PORT"]},
 		{"sftp", env["SFTP_FQDN"], "tcp", env["SFTP_PORT"]},
@@ -377,7 +378,7 @@ func builtinServiceEntries(env map[string]string) []builtinService {
 // both consume it. Unset services are skipped.
 func builtinServiceFQDNs(env map[string]string) []string {
 	var fqdns []string
-	for _, key := range []string{"DNS_FQDN", "CA_FQDN", "DEPOT_FQDN", "KEYCLOAK_FQDN", "AUTHENTIK_FQDN", "NETBOX_FQDN", "S3_FQDN", "SFTP_FQDN", "SYSLOG_FQDN", "CONTROL_PLANE_FQDN"} {
+	for _, key := range []string{"DNS_FQDN", "CA_FQDN", "DEPOT_FQDN", "KEYCLOAK_FQDN", "AUTHENTIK_FQDN", "ZITADEL_FQDN", "NETBOX_FQDN", "S3_FQDN", "SFTP_FQDN", "SYSLOG_FQDN", "CONTROL_PLANE_FQDN"} {
 		if env[key] != "" {
 			fqdns = append(fqdns, env[key])
 		}

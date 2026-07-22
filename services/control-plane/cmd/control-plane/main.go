@@ -101,6 +101,7 @@ func main() {
 		engine.Register(deploy.Depot{})
 		engine.Register(deploy.Keycloak{})
 		engine.Register(deploy.Authentik{})
+		engine.Register(deploy.Zitadel{})
 		engine.Register(deploy.Netbox{})
 		engine.Register(deploy.S3{})
 		engine.Register(deploy.SFTP{})

@@ -144,6 +144,28 @@ var schema = []requirement{
 	{"AUTHENTIK_BOOTSTRAP_USER_EMAIL_DOMAIN", []string{"authentik"}, []func(string) error{checkFQDN}},
 	{"AUTHENTIK_BOOTSTRAP_CLIENT_REDIRECT_URIS", []string{"authentik"}, nil},
 
+	// Zitadel (require_zitadel_vars).
+	{"ZITADEL_DIR", []string{"zitadel"}, []func(string) error{checkAbsPath}},
+	{"ZITADEL_FQDN", []string{"zitadel"}, []func(string) error{checkFQDN}},
+	{"ZITADEL_PORT", []string{"zitadel"}, []func(string) error{checkPort}},
+	{"ZITADEL_IMAGE", []string{"zitadel"}, []func(string) error{checkImage}},
+	{"ZITADEL_LOGIN_IMAGE", []string{"zitadel"}, []func(string) error{checkImage}},
+	{"ZITADEL_NGINX_IMAGE", []string{"zitadel"}, []func(string) error{checkImage}},
+	{"ZITADEL_POSTGRES_IMAGE", []string{"zitadel"}, []func(string) error{checkImage}},
+	{"ZITADEL_MASTERKEY", []string{"zitadel"}, []func(string) error{checkNotPlaceholder}},
+	{"ZITADEL_ADMIN_USERNAME", []string{"zitadel"}, []func(string) error{checkNotPlaceholder}},
+	{"ZITADEL_ADMIN_PASSWORD", []string{"zitadel"}, []func(string) error{checkNotPlaceholder}},
+	{"ZITADEL_PG_DB", []string{"zitadel"}, []func(string) error{checkPgIdentifier}},
+	{"ZITADEL_PG_USER", []string{"zitadel"}, []func(string) error{checkPgIdentifier}},
+	{"ZITADEL_PG_PASSWORD", []string{"zitadel"}, []func(string) error{checkNotPlaceholder}},
+	{"ZITADEL_BOOTSTRAP_CLIENT_ID", []string{"zitadel"}, []func(string) error{checkNotPlaceholder}},
+	{"ZITADEL_BOOTSTRAP_CLIENT_SECRET", []string{"zitadel"}, []func(string) error{checkNotPlaceholder}},
+	{"ZITADEL_BOOTSTRAP_GROUP_NAME", []string{"zitadel"}, []func(string) error{checkNotPlaceholder}},
+	{"ZITADEL_BOOTSTRAP_USERNAME", []string{"zitadel"}, []func(string) error{checkNotPlaceholder}},
+	{"ZITADEL_BOOTSTRAP_USER_PASSWORD", []string{"zitadel"}, []func(string) error{checkNotPlaceholder}},
+	{"ZITADEL_BOOTSTRAP_USER_EMAIL_DOMAIN", []string{"zitadel"}, []func(string) error{checkFQDN}},
+	{"ZITADEL_BOOTSTRAP_CLIENT_REDIRECT_URIS", []string{"zitadel"}, nil},
+
 	// SFTPGo (require_sftp_vars). The optional SFTP_BACKUP_* trio is
 	// all-or-nothing, checked in the deployer.
 	{"SFTP_FQDN", []string{"sftp"}, []func(string) error{checkFQDN}},

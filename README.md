@@ -12,6 +12,7 @@ It is designed for lab and proof-of-concept environments, especially VMware Clou
 - VCF offline depot served by nginx
 - Keycloak for identity
 - Authentik for identity federation with OIDC and outbound SCIM 2.0 provisioning
+- Zitadel for identity with OIDC (Management API-provisioned bootstrap client)
 - NetBox for IPAM, DCIM, and infrastructure source-of-truth
 - SeaweedFS for S3-compatible object storage
 - SFTPGo for SFTP file transfer
@@ -32,7 +33,7 @@ sudo bash install.sh
 Then, in the UI:
 
 1. **`/config`** - edit or paste `labprovider.env` (or download it, fill it out locally, and paste it back), validate (every problem is reported at once, per variable), and save. Optional external DNS records (`dns.seed`) are managed on the same page.
-2. **`/deploy`** - tick the services you want (dependencies are added automatically), press Deploy, and watch the live log. "Select all" deploys the full catalog in dependency order: chrony, rsyslog, ca, technitium, depot, keycloak, authentik, netbox, s3, sftp, dns-sync.
+2. **`/deploy`** - tick the services you want (dependencies are added automatically), press Deploy, and watch the live log. "Select all" deploys the full catalog in dependency order: chrony, rsyslog, ca, technitium, depot, keycloak, authentik, zitadel, netbox, s3, sftp, dns-sync.
 3. **`/`** - the dashboard: certificates (step-ca), DNS zones (Technitium), IPAM (NetBox), container state, and recent errors at a glance.
 
 After the CA is deployed the control plane issues its own certificate; restart the container (`docker restart labprovider-control-plane`) to serve the UI over HTTPS.
@@ -53,6 +54,7 @@ After the CA is deployed the control plane issues its own certificate; restart t
 | Depot | 80/tcp, 443/tcp |
 | Keycloak | 8443/tcp |
 | Authentik | 9443/tcp |
+| Zitadel | 7443/tcp |
 | NetBox | 8444/tcp |
 | S3 | 8333/tcp |
 | SFTPGo | 2022/tcp, 8080/tcp |
@@ -546,6 +548,22 @@ VCF integration notes:
 
 - Import `${CA_DATA_DIR}/certs/root_ca.crt` into VCF's trusted certificate authorities
 - After configuring the VCF Identity Broker, create the SCIM provider in Authentik manually using the SCIM base URL and bearer token that VCF generates, and assign it as the backchannel provider on the `VCF` application. The SCIM URL and token only exist after the VCF side is configured, so this step is not automated.
+
+### Zitadel
+
+- Deployed by the control plane (Go deploy engine); not available in the legacy `bootstrap/*.sh` path
+- Runs Zitadel v4 with its decoupled Login V2 UI, so the stack is four containers: PostgreSQL 17, the core server, the `zitadel-login` container, and an nginx TLS terminator that fronts both (v4 dropped CockroachDB support)
+- Requires step-ca to be initialized first
+- Runs in parallel with Keycloak and Authentik on separate FQDNs and ports when more than one is deployed (including via "Select all")
+- Exposed at `https://<ZITADEL_FQDN>:<ZITADEL_PORT>` (`7443` by default), served by the nginx terminator using the step-ca-issued certificate (mounted from `${ZITADEL_DIR}/certs/<ZITADEL_FQDN>`)
+- The core runs plain HTTP behind the proxy (`--tlsMode external`, `ExternalSecure=true`); nginx routes `/ui/v2/login` to the login container and everything else to the core
+- Persists application state in PostgreSQL 17 under `${ZITADEL_DIR}/postgres`
+- `ZITADEL_MASTERKEY` must be EXACTLY 32 characters (Zitadel requirement)
+- On first start Zitadel's FirstInstance init creates a human admin (`ZITADEL_ADMIN_USERNAME`/`ZITADEL_ADMIN_PASSWORD`), an admin service account whose PAT is written to `WORKDIR/zitadel/machinekey/pat.txt`, and the `login-client` service account whose PAT (`WORKDIR/zitadel/machinekey/login-client.pat`) the Login V2 container authenticates with
+- Post-deploy, the control plane uses the admin PAT against the Management API to create a bootstrap project, an OIDC application with `ZITADEL_BOOTSTRAP_CLIENT_REDIRECT_URIS`, a project role (`ZITADEL_BOOTSTRAP_GROUP_NAME`), and a lab user granted that role; the steps tolerate pre-existing objects on re-runs
+- Zitadel generates the OIDC client id/secret on creation, so the deploy writes the real issuer/client id/secret to `${ZITADEL_DIR}/certs/<ZITADEL_FQDN>/zitadel-oidc-client.txt` for use with VCF SSO
+- **Multi-tenant**: set `ZITADEL_TENANTS` to a comma-separated list of org names to seed each as an isolated organization (its own vcf-sso project, OIDC client, role, and lab user) instead of a single set in the default org. Orgs share the one instance URL (`https://<ZITADEL_FQDN>:<ZITADEL_PORT>`) - the generated org domain (`<name>.<fqdn>`) is a logical identifier for login names and org discovery, not a DNS record or cert. Each tenant's generated client id/secret, issuer, and org login scope (`urn:zitadel:iam:org:id:<orgId>`, which a VCF OIDC request can pass to pin sign-in to that tenant) are written to `zitadel-oidc-<name>.txt`. All tenants currently share the bootstrap client/user template; the default org stays admin-only
+- OIDC discovery is served at `https://<ZITADEL_FQDN>:<ZITADEL_PORT>/.well-known/openid-configuration`
 
 ### NetBox
 

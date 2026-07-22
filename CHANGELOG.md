@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## 2026-07-22 (Zitadel uses the v4 Login V2 UI)
+
+### Features
+- Zitadel multi-tenant seeding via `ZITADEL_TENANTS`. When set to a comma-separated list of org names, the deployer creates each as an isolated organization - its own vcf-sso project, OIDC client, project role, and lab user - via the Management API scoped with the `x-zitadel-orgid` header, leaving the default org for instance administration only. Each tenant's generated client id/secret, issuer, and org login scope (`urn:zitadel:iam:org:id:<orgId>`) are written to `zitadel-oidc-<name>.txt`. Empty keeps the prior single-default-org behavior. Org creation is idempotent (lookup-before-create, since Zitadel org names are not unique). Note: the generated org domains are logical identifiers (login names / org discovery), not DNS records - all orgs share the one instance URL.
+
+### Changes
+- Log the Zitadel Console admin login name and URL at the end of a deploy. Zitadel appends the generated org domain to the configured admin username (e.g. `provider-admin` becomes `provider-admin@zitadel.<fqdn>`), which was otherwise only discoverable by querying the API; the deployer now fetches and prints it (best-effort).
+
+### Fixes
+- Make the Zitadel missing-PAT error actionable: it now explains that the PAT is written only during a first-instance init on an empty database and gives the exact recovery (stop the stack, remove the `postgres` and `machinekey` dirs under `ZITADEL_DIR`, redeploy), instead of just "check the server logs".
+- Persist the Zitadel machine-user PATs under `ZITADEL_DIR` instead of the runtime dir. Zitadel writes the admin and login-client PATs only during first-instance init; they lived under `WORKDIR/zitadel/machinekey`, which `Remove` wipes while it preserves the database under `ZITADEL_DIR`. A Remove-then-deploy (or any runtime cleanup) left the DB present but the PATs gone, and init would not rewrite them - failing with `Zitadel did not write the machine-user PAT`. The PATs now live under `ZITADEL_DIR/machinekey`, sharing the database's persistence lifecycle.
+- Preserve the port when proxying to Zitadel. The nginx terminator forwarded `Host $host`, which strips the port, so Zitadel built the OIDC issuer as `https://<fqdn>` (no port) and the Console failed to load `/.well-known/openid-configuration` (hit port 443, `status 0`). Forward `$http_host` (and `X-Forwarded-Host`) instead, and include the port in the login container's `CUSTOM_REQUEST_HEADERS` Host override, so public URLs carry `<fqdn>:<port>`.
+- Set `CUSTOM_REQUEST_HEADERS=Host:<ZITADEL_FQDN>` on the Zitadel login container. It reaches the core over the internal service name (`http://zitadel:8080`), so Zitadel saw `Host: zitadel` and could not match the virtual instance (keyed on the external domain), failing every login-container call with `Instance not found` / `Errors.Instance.NotFound`. Overriding the Host header makes the instance lookup resolve.
+- Harden the Zitadel nginx terminator for the Console: `http2 on`, `proxy_http_version 1.1` (required for the Angular Console's gRPC-web calls and chunked responses), a cleared `Connection` header, `X-Forwarded-Host`, and larger proxy buffers. The previous minimal config (copied from the netbox terminator) defaulted to HTTP/1.0 upstream, which broke the Console's browser API calls. `proxy_pass` (not `grpc_pass`) is kept on `/` so the REST/JSON endpoints the control plane provisions against keep working.
+- Gate Zitadel provisioning on an authenticated Management API call (`GET /management/v1/orgs/me`) instead of only `/debug/ready`. `/debug/ready` is served by the HTTP layer, but the Management API proxies through Zitadel's internal grpc-gateway to its own gRPC backend over loopback, which can refuse the connection for a few seconds after readiness reports up - surfacing as `create Zitadel project: HTTP 503 ... dial tcp [::1]:8080: connect: connection refused` (gRPC code 14). The gate mirrors the Authentik deployer's two-phase readiness and raises a clear error (pointing at IPv6 loopback) if it persists.
+
+### Changes
+- Switched the Zitadel deployer from the bundled legacy login to Zitadel v4's decoupled Login V2. The stack is now four containers: PostgreSQL 17, the core server (plain HTTP, `--tlsMode external`), the `zitadel-login` container, and an nginx TLS terminator that serves the step-ca certificate and routes `/ui/v2/login` to the login container and everything else to the core. This keeps multi-tenant flows on the actively developed login (Login V1 is deprecated).
+  - Core enables `ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED=true` and, on fresh install, auto-creates the `login-client` service account, writing its PAT to `WORKDIR/zitadel/machinekey/login-client.pat` (via `ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH`); the login container reads it through `ZITADEL_SERVICE_USER_TOKEN_FILE`.
+  - New config: `ZITADEL_LOGIN_IMAGE` (`ghcr.io/zitadel/zitadel-login`, track `ZITADEL_IMAGE`) and `ZITADEL_NGINX_IMAGE`. New template `zitadel-nginx.conf.tpl` (mirrors the depot/netbox terminator pattern).
+
+---
+
+## 2026-07-22 (control plane deploys Zitadel as a third IdP)
+
+### Features
+- Added Zitadel as an identity-provider option in the control-plane deploy engine, alongside Keycloak and Authentik. Registering `deploy.Zitadel{}` surfaces it automatically in the `/deploy` UI and in "Select all" (dependency order now: chrony, rsyslog, ca, technitium, depot, keycloak, authentik, zitadel, netbox, s3, sftp, dns-sync). Scope is the Go control plane only; the legacy `bootstrap/*.sh` path is unchanged.
+  - **zitadel**: Zitadel v4 core container plus a PostgreSQL 17 backend (v4 dropped CockroachDB), serving the step-ca-issued certificate directly (no self-signed bootstrap window). `ZITADEL_MASTERKEY` must be exactly 32 characters. v4 defaults new instances to the decoupled Login V2 container; the deploy keeps the bundled legacy login (`ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED=false`) so a single container serves the interactive sign-in flow. Zitadel's FirstInstance init mints a machine service account whose PAT is written to `WORKDIR/zitadel/machinekey/pat.txt`; the deployer reads it and drives the Management API to create the bootstrap project, an OIDC application with the configured redirect URIs, a project role, and a lab user granted that role (idempotent on re-runs). Because Zitadel generates the OIDC client id/secret on creation, the real issuer/client id/secret are written to `${ZITADEL_DIR}/certs/<ZITADEL_FQDN>/zitadel-oidc-client.txt` for the VCF SSO configuration.
+- New files: `services/control-plane/internal/deploy/zitadel.go`, `.../templates/docker-compose.zitadel.yml.tpl`, and the render-parity golden. Wired into the schema validation table, the dashboard container filter, and the NetBox service/FQDN seeding; `config/labprovider.env.example` gains the `ZITADEL_*` block.
+
+---
+
 ## 2026-07-11 (v2 documentation: control plane is the primary path)
 
 ### Fixes
