@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/dsjodin/provider-box/services/control-plane/internal/envfile"
@@ -27,10 +28,10 @@ type Service interface {
 
 // RunCtx carries everything a deployer needs for one run.
 type RunCtx struct {
-	Env  map[string]string // parsed provider-box.env plus derived fields
-	Log  func(format string, args ...any)
-	eng  *Engine
-	svc  string
+	Env map[string]string // parsed provider-box.env plus derived fields
+	Log func(format string, args ...any)
+	eng *Engine
+	svc string
 }
 
 // Workdir returns ${WORKDIR}/<sub>.
@@ -54,8 +55,8 @@ type Engine struct {
 
 	mu      sync.Mutex
 	nextID  int
-	current *Run          // nil when idle
-	runs    map[int]*Run  // by id, for SSE replay
+	current *Run         // nil when idle
+	runs    map[int]*Run // by id, for SSE replay
 }
 
 func NewEngine(store envfile.Store, state *StateStore, logger *slog.Logger) *Engine {
@@ -138,10 +139,17 @@ func (e *Engine) Start(selection []string, remove bool) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	var skipped []string
 	if remove {
 		slices.Reverse(ordered)
 	} else {
-		ordered = e.skipDeployedDeps(selection, ordered)
+		kept := e.skipDeployedDeps(selection, ordered)
+		for _, name := range ordered {
+			if !slices.Contains(kept, name) {
+				skipped = append(skipped, name)
+			}
+		}
+		ordered = kept
 	}
 
 	content, ok, err := e.Store.Load()
@@ -176,6 +184,7 @@ func (e *Engine) Start(selection []string, remove bool) (int, error) {
 	}
 	e.nextID++
 	run := newRun(e.nextID, ordered, remove)
+	run.Skipped = skipped
 	e.current = run
 	e.runs[run.ID] = run
 
@@ -220,6 +229,9 @@ func (e *Engine) execute(run *Run, env map[string]string) {
 	verb := "deploy"
 	if run.Remove {
 		verb = "remove"
+	}
+	if len(run.Skipped) > 0 {
+		run.emit(Event{Type: "log", Line: fmt.Sprintf("Skipping already-deployed dependencies: %s (tick them explicitly to redeploy).", strings.Join(run.Skipped, ", "))})
 	}
 
 	failed := false

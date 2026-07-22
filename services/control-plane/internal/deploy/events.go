@@ -19,6 +19,7 @@ type Event struct {
 type Run struct {
 	ID       int      `json:"id"`
 	Services []string `json:"services"`
+	Skipped  []string `json:"skipped,omitempty"` // deps left out because already deployed
 	Remove   bool     `json:"remove"`
 
 	mu     sync.Mutex
