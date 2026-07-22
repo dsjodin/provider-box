@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ## 2026-07-22 (Zitadel uses the v4 Login V2 UI)
 
+### Fixes
+- Gate Zitadel provisioning on an authenticated Management API call (`GET /management/v1/orgs/me`) instead of only `/debug/ready`. `/debug/ready` is served by the HTTP layer, but the Management API proxies through Zitadel's internal grpc-gateway to its own gRPC backend over loopback, which can refuse the connection for a few seconds after readiness reports up - surfacing as `create Zitadel project: HTTP 503 ... dial tcp [::1]:8080: connect: connection refused` (gRPC code 14). The gate mirrors the Authentik deployer's two-phase readiness and raises a clear error (pointing at IPv6 loopback) if it persists.
+
 ### Changes
 - Switched the Zitadel deployer from the bundled legacy login to Zitadel v4's decoupled Login V2. The stack is now four containers: PostgreSQL 17, the core server (plain HTTP, `--tlsMode external`), the `zitadel-login` container, and an nginx TLS terminator that serves the step-ca certificate and routes `/ui/v2/login` to the login container and everything else to the core. This keeps multi-tenant flows on the actively developed login (Login V1 is deprecated).
   - Core enables `ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED=true` and, on fresh install, auto-creates the `login-client` service account, writing its PAT to `WORKDIR/zitadel/machinekey/login-client.pat` (via `ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH`); the login container reads it through `ZITADEL_SERVICE_USER_TOKEN_FILE`.

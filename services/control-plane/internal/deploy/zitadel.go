@@ -103,6 +103,15 @@ func (z Zitadel) Deploy(ctx context.Context, rc *RunCtx) error {
 		return err
 	}
 	api.token = pat
+	// /debug/ready is served by the HTTP layer directly; the Management API
+	// proxies through Zitadel's internal grpc-gateway to its own gRPC backend
+	// over loopback, which can refuse the connection for a few seconds longer.
+	// Gate provisioning on a real authenticated API call (as the Authentik
+	// deployer does) so a transient gRPC "connection refused" is not fatal.
+	rc.Log("Waiting for the Zitadel Management API to accept the admin token.")
+	if err := api.waitAPIReady(ctx, 45, 2*time.Second); err != nil {
+		return err
+	}
 	if err := provisionZitadel(ctx, rc, api); err != nil {
 		return err
 	}
@@ -225,6 +234,31 @@ func (a *zitadelAPI) do(ctx context.Context, method, path string, payload any) (
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	return resp.StatusCode, b, nil
+}
+
+// waitAPIReady polls an authenticated Management API endpoint until it answers
+// 200. This exercises the same grpc-gateway -> gRPC path provisioning uses, so
+// it clears the window where /debug/ready is up but the internal gRPC backend
+// still refuses the loopback connection (gRPC code 14).
+func (a *zitadelAPI) waitAPIReady(ctx context.Context, attempts int, interval time.Duration) error {
+	var last string
+	for i := 0; i < attempts; i++ {
+		status, body, err := a.do(ctx, http.MethodGet, "/management/v1/orgs/me", nil)
+		if err == nil && status == http.StatusOK {
+			return nil
+		}
+		if err != nil {
+			last = err.Error()
+		} else {
+			last = fmt.Sprintf("HTTP %d: %.200s", status, body)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+	return fmt.Errorf("Zitadel Management API did not become ready (last: %s); if it keeps failing with a gRPC \"dial tcp [::1]:8080: connect: connection refused\", the core container cannot reach its own gRPC backend over IPv6 loopback - enable IPv6 loopback in the container", last)
 }
 
 // provisionZitadel creates the bootstrap project, OIDC application, lab user,
