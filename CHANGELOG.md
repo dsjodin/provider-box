@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ## 2026-07-22 (Zitadel uses the v4 Login V2 UI)
 
+### Changes
+- Log the Zitadel Console admin login name and URL at the end of a deploy. Zitadel appends the generated org domain to the configured admin username (e.g. `provider-admin` becomes `provider-admin@zitadel.<fqdn>`), which was otherwise only discoverable by querying the API; the deployer now fetches and prints it (best-effort).
+
 ### Fixes
 - Make the Zitadel missing-PAT error actionable: it now explains that the PAT is written only during a first-instance init on an empty database and gives the exact recovery (stop the stack, remove the `postgres` and `machinekey` dirs under `ZITADEL_DIR`, redeploy), instead of just "check the server logs".
 - Persist the Zitadel machine-user PATs under `ZITADEL_DIR` instead of the runtime dir. Zitadel writes the admin and login-client PATs only during first-instance init; they lived under `WORKDIR/zitadel/machinekey`, which `Remove` wipes while it preserves the database under `ZITADEL_DIR`. A Remove-then-deploy (or any runtime cleanup) left the DB present but the PATs gone, and init would not rewrite them - failing with `Zitadel did not write the machine-user PAT`. The PATs now live under `ZITADEL_DIR/machinekey`, sharing the database's persistence lifecycle.

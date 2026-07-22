@@ -119,6 +119,7 @@ func (z Zitadel) Deploy(ctx context.Context, rc *RunCtx) error {
 	if err := provisionZitadel(ctx, rc, api); err != nil {
 		return err
 	}
+	logZitadelAdminLogin(ctx, rc, api)
 
 	rc.Log("Zitadel is ready at %s (Login V2 UI at /ui/v2/login, OIDC discovery under /.well-known/openid-configuration).", api.base())
 	return nil
@@ -405,4 +406,27 @@ func ensureZitadelUser(ctx context.Context, api *zitadelAPI, env map[string]stri
 
 func okOrExists(status int) bool {
 	return status == http.StatusOK || status == http.StatusCreated || status == http.StatusConflict
+}
+
+// logZitadelAdminLogin logs the human admin's real login name and the Console
+// URL. Zitadel appends the generated org domain to the configured username
+// (e.g. provider-admin becomes provider-admin@zitadel.<fqdn>), so this saves
+// operators from querying the API to discover it. Best-effort: never fatal.
+func logZitadelAdminLogin(ctx context.Context, rc *RunCtx, api *zitadelAPI) {
+	env := rc.Env
+	loginName := ""
+	_, body, err := api.do(ctx, http.MethodPost, "/management/v1/users/_search",
+		map[string]any{"queries": []map[string]any{
+			{"userNameQuery": map[string]string{"userName": env["ZITADEL_ADMIN_USERNAME"], "method": "TEXT_QUERY_METHOD_STARTS_WITH"}},
+		}})
+	if err == nil {
+		loginName = firstResult(body, "preferredLoginName")
+	}
+	if loginName == "" {
+		// Fall back to the configured username; the real login name carries the
+		// generated org domain, visible in the Console user list.
+		loginName = env["ZITADEL_ADMIN_USERNAME"] + " (Zitadel appends the org domain; see the Console user list for the full login name)"
+	}
+	rc.Log("Zitadel Console admin login name: %s (use the configured ZITADEL_ADMIN_PASSWORD) at https://%s:%s/ui/console.",
+		loginName, env["ZITADEL_FQDN"], env["ZITADEL_PORT"])
 }
