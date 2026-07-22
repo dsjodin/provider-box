@@ -115,13 +115,19 @@ func (d DNSSync) Deploy(ctx context.Context, rc *RunCtx) error {
 
 	// Real-DNS verification: after the first reconcile the lab zone must be
 	// served by Technitium - exactly the output dns-sync exists to produce.
+	// On failure the dns-sync log tail is streamed into the deploy output:
+	// its "reconcile failed" line names the exact op Technitium rejected
+	// (Apply stops at the first failing op, which blocks everything ordered
+	// after it - the built-ins are last).
 	rc.Log("Verifying dns-sync populated the lab zone (%s via 127.0.0.1).", env["PROVIDER_BOX_FQDN"])
 	if err := waitRecordResolves(ctx, env["PROVIDER_BOX_FQDN"], 45, 2*time.Second); err != nil {
-		return fmt.Errorf("dns-sync did not populate the lab zone (check the dns-sync logs and that NetBox holds the canonical host IP): %w", err)
+		tailDNSSyncLogs(ctx, rc, cmp)
+		return fmt.Errorf("dns-sync did not populate the lab zone (see the log tail above; is the canonical host IP in NetBox?): %w", err)
 	}
 	for _, fqdn := range builtinServiceFQDNs(env) {
 		if err := waitRecordResolves(ctx, fqdn, 15, 2*time.Second); err != nil {
-			return fmt.Errorf("built-in service record %s does not resolve via Technitium: %w", fqdn, err)
+			tailDNSSyncLogs(ctx, rc, cmp)
+			return fmt.Errorf("built-in service record %s does not resolve via Technitium (see the log tail above): %w", fqdn, err)
 		}
 	}
 	rc.Log("All built-in Provider Box service FQDNs resolve via Technitium.")
@@ -139,6 +145,16 @@ func (d DNSSync) Remove(ctx context.Context, rc *RunCtx) error {
 	}
 	rc.Log("Removed dns-sync containers and runtime files. Operator secrets in %s were preserved.", rc.Env["DNS_SYNC_SECRETS_DIR"])
 	return nil
+}
+
+// tailDNSSyncLogs streams the container's recent log lines into the deploy
+// output so verification failures are self-diagnosing.
+func tailDNSSyncLogs(ctx context.Context, rc *RunCtx, cmp Compose) {
+	rc.Log("--- dns-sync log tail ---")
+	if err := cmp.docker(ctx, "compose", "logs", "--tail", "30", "dns-sync"); err != nil {
+		rc.Log("could not read dns-sync logs: %v", err)
+	}
+	rc.Log("--- end log tail ---")
 }
 
 func findDNSSyncSource() (string, error) {
