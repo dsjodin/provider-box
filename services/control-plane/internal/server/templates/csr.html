@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>labprovider - Sign CSR</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a2029; --border: #2b333f; --fg: #d7dde5;
+    --muted: #8b95a3; --accent: #4a9eda; --ok: #3fb56a; --warn: #d99a30;
+    --bad: #d9534f; --chip: #232b36;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 20px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 18px; }
+  header nav a { color: var(--accent); text-decoration: none; margin-right: 14px; font-size: 13px; }
+  main { padding: 24px; max-width: 1100px; }
+  .panel { background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 16px; margin-bottom: 18px; }
+  .panel h2 { margin: 0 0 10px; font-size: 14px; }
+  .note { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  textarea { width: 100%; min-height: 220px; background: #0a0e13; color: var(--fg);
+    border: 1px solid var(--border); border-radius: 6px; padding: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  button { background: var(--chip); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #08111a; font-weight: 600; }
+  input[type=file] { font-size: 13px; color: var(--muted); }
+  #status { font-size: 13px; margin-left: 6px; }
+  #status.bad { color: var(--bad); }
+  #status.ok { color: var(--ok); }
+  #result { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>labprovider &mdash; Sign CSR</h1>
+  <nav><a href="/">Dashboard</a><a href="/config">Configuration</a><a href="/deploy">Deploy</a><a href="/csr">Sign CSR</a></nav>
+</header>
+<main>
+  <div class="panel">
+    <h2>Certificate signing request</h2>
+    <p class="note">Paste a PEM CSR or load a <code>.csr</code>/<code>.pem</code> file, then submit it to
+      step-ca. The signed certificate is returned as a full chain (leaf + intermediate). Your private
+      key stays with you and is never uploaded.</p>
+    <textarea id="csr" placeholder="-----BEGIN CERTIFICATE REQUEST-----&#10;...&#10;-----END CERTIFICATE REQUEST-----"></textarea>
+    <div class="actions">
+      <input type="file" id="file" accept=".csr,.pem,.req,text/plain">
+      <button class="primary" onclick="sign()">Sign</button>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <div class="panel" id="result">
+    <h2>Signed certificate</h2>
+    <textarea id="cert" readonly></textarea>
+    <div class="actions">
+      <button onclick="download()">Download signed.crt</button>
+      <button onclick="copyCert()">Copy</button>
+    </div>
+  </div>
+</main>
+<script>
+const statusEl = document.getElementById('status');
+const csrEl = document.getElementById('csr');
+const certEl = document.getElementById('cert');
+const resultEl = document.getElementById('result');
+
+document.getElementById('file').addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  if (f) csrEl.value = await f.text();
+});
+
+async function sign() {
+  const csr = csrEl.value.trim();
+  if (!csr) { statusEl.className = 'bad'; statusEl.textContent = 'Paste or load a CSR first.'; return; }
+  statusEl.className = ''; statusEl.textContent = 'Signing...';
+  resultEl.style.display = 'none';
+  const res = await fetch('/api/csr/sign', { method: 'POST',
+    headers: {'Content-Type': 'text/plain'}, body: csr });
+  const data = await res.json();
+  if (!res.ok) { statusEl.className = 'bad'; statusEl.textContent = data.error || 'Signing failed.'; return; }
+  certEl.value = data.cert;
+  resultEl.style.display = 'block';
+  statusEl.className = 'ok'; statusEl.textContent = 'Signed.';
+}
+
+function download() {
+  const blob = new Blob([certEl.value], { type: 'application/x-pem-file' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'signed.crt';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function copyCert() { navigator.clipboard.writeText(certEl.value); }
+</script>
+</body>
+</html>

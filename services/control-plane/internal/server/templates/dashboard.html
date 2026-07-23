@@ -21,6 +21,8 @@
     grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
   .panel { background: var(--panel); border: 1px solid var(--border);
     border-radius: 8px; overflow: hidden; }
+  .panel.wide { grid-column: 1 / -1; }
+  .panel.wide .body { overflow-x: auto; }
   .panel > h2 { margin: 0; padding: 12px 16px; font-size: 14px;
     border-bottom: 1px solid var(--border); display: flex;
     justify-content: space-between; align-items: center; }
@@ -58,7 +60,7 @@
 <body>
 <header>
   <h1>labprovider &mdash; Current State</h1>
-  <nav style="font-size:13px"><a style="color:var(--accent);text-decoration:none;margin-right:14px" href="/">Dashboard</a><a style="color:var(--accent);text-decoration:none;margin-right:14px" href="/config">Configuration</a><a style="color:var(--accent);text-decoration:none" href="/deploy">Deploy</a></nav>
+  <nav style="font-size:13px"><a style="color:var(--accent);text-decoration:none;margin-right:14px" href="/">Dashboard</a><a style="color:var(--accent);text-decoration:none;margin-right:14px" href="/config">Configuration</a><a style="color:var(--accent);text-decoration:none;margin-right:14px" href="/deploy">Deploy</a><a style="color:var(--accent);text-decoration:none" href="/csr">Sign CSR</a></nav>
   <span class="meta">{{ .FQDN }} &middot; generated {{ .GeneratedAt }}</span>
 </header>
 <main>
@@ -145,7 +147,7 @@
   </section>
 
   {{/* ---- Services ---- */}}
-  <section class="panel">
+  <section class="panel wide">
     <h2>Services (Docker) {{ template "state" .Services.Status }}</h2>
     <div class="body">
     {{- if .Services.Status.OK }}
@@ -173,7 +175,7 @@
   </section>
 
   {{/* ---- Recent errors ---- */}}
-  <section class="panel">
+  <section class="panel wide">
     <h2>Recent errors {{ template "state" .Errors.Status }}</h2>
     <div class="body">
     {{- if .Errors.Status.OK }}

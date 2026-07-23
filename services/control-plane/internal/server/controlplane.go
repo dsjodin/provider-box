@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dsjodin/labprovider/services/control-plane/internal/deploy"
 	"github.com/dsjodin/labprovider/services/control-plane/internal/envfile"
@@ -22,6 +24,9 @@ var wizardHTML []byte
 
 //go:embed templates/deploy.html
 var deployHTML []byte
+
+//go:embed templates/csr.html
+var csrHTML []byte
 
 const maxConfigBytes = 1 << 20 // an env file is a few KB; reject anything absurd
 
@@ -40,6 +45,11 @@ func (s *Server) registerControlPlane(mux *http.ServeMux) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(deployHTML)
 	})
+	mux.HandleFunc("GET /csr", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(csrHTML)
+	})
+	mux.HandleFunc("POST /api/csr/sign", s.handleCSRSign)
 	mux.HandleFunc("GET /api/config", s.handleConfigGet)
 	mux.HandleFunc("POST /api/config/validate", s.handleConfigValidate)
 	mux.HandleFunc("PUT /api/config", s.handleConfigPut)
@@ -173,6 +183,34 @@ func (s *Server) handleSeedPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"saved": true})
+}
+
+// handleCSRSign signs an uploaded PEM CSR with step-ca and returns the signed
+// certificate (full chain). The requester keeps its private key; only the CSR
+// crosses the wire.
+func (s *Server) handleCSRSign(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxConfigBytes+1))
+	if err != nil || len(body) > maxConfigBytes {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("bad or oversized CSR"))
+		return
+	}
+	content, saved, err := s.opt.Engine.Store.Load()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if !saved {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("no configuration saved yet; save one in the config wizard first"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	crt, err := deploy.SignCSR(ctx, envfile.Parse(content), body)
+	if err != nil {
+		writeErr(w, http.StatusUnprocessableEntity, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"cert": string(crt)})
 }
 
 func validateSeed(content []byte) []string {
