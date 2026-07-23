@@ -235,7 +235,7 @@ func buildMSCA(store envfile.Store, logger *slog.Logger) (http.Handler, string, 
 	}
 	port := env["VMSCA_PORT"]
 	if port == "" {
-		port = "8444"
+		port = "8446"
 	}
 
 	sign := func(ctx context.Context, csr []byte) ([]byte, error) {

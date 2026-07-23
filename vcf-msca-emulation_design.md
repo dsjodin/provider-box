@@ -138,8 +138,11 @@ New package `services/control-plane/internal/msca`, wired into the control-plane
 **Auth + TLS** - a dedicated listener on its own port, separate from the admin
 control-plane port, so the VCF-facing surface is isolated even though it shares the
 process.
-- Port `VMSCA_PORT` (default 8444). The control plane runs with host networking, so
-  binding the port is all that is needed - no compose port mapping.
+- Port `VMSCA_PORT` (default 8446; must not collide with other service ports -
+  NETBOX_PORT is 8444, CONTROL_PLANE is 8445). The control plane runs with host
+  networking, so binding the port is all that is needed - no compose port mapping, but a
+  collision fails the bind and only the emulator listener exits (logged), leaving the rest
+  of the control plane up.
 - TLS reuses the control plane's own step-ca leaf (`CONTROL_PLANE_TLS_CERT` /
   `_TLS_KEY`), so no new issuance path, `IssueCert` call, or CA-readiness coupling at
   startup. The consequence is that VCF reaches the emulator at the **control plane FQDN**
@@ -162,7 +165,7 @@ without a restart (same reload behavior as `/api/csr/sign`).
 | Key | Purpose | Default |
 |---|---|---|
 | `VMSCA_ENABLE` | turn the certsrv front-end on/off | `false` |
-| `VMSCA_PORT` | listener port (reached at the control plane FQDN) | `8444` |
+| `VMSCA_PORT` | listener port (reached at the control plane FQDN) | `8446` |
 | `VMSCA_USERNAME` | Basic Auth user VCF is configured with | `vcf-enroll` |
 | `VMSCA_PASSWORD` | Basic Auth password | (change from placeholder) |
 | `VMSCA_TEMPLATE` | accepted CertificateTemplate name | `VMware` |
