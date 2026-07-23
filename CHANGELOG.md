@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## 2026-07-23 (Microsoft-CA web-enrollment emulator for VCF)
+
+### Features
+- New `internal/msca` package: a Microsoft ADCS "Certificate Authority Web Enrollment" (`certsrv`) emulator in front of step-ca, so VCF / SDDC Manager can automate certificate replacement using its Microsoft CA integration (step-ca offers no such interface natively). It serves the endpoints an ADCS web-enrollment client drives - `certfnsh.asp` (CSR submit), `certnew.cer` (issued leaf and CA cert), `certnew.p7b` (CA chain as certs-only PKCS#7), `certcarc.asp` (renewal count), and the `/certsrv/` credential probe - all behind HTTP Basic Auth. Each accepted CSR is signed synchronously through the existing `deploy.SignCSR` (same `admin` provisioner and full-chain guarantee as the dashboard's `/api/csr/sign`), so emulator-issued certs are identical to dashboard- and `IssueCert`-issued ones. The CA chain is emitted as a hand-built degenerate PKCS#7 (`internal/msca/pkcs7.go`, `encoding/asn1`, no new dependency; output verified with `openssl pkcs7 -print_certs`).
+- The control plane starts the emulator as a second listener on `VMSCA_PORT` (default 8444) when `VMSCA_ENABLE=true`, reusing the control plane's own step-ca TLS leaf (so VCF reaches it at the control plane FQDN). The signer and CA-chain closures reload the managed config per request, so a CA deployed or reconfigured after startup is picked up without a restart. New config `VMSCA_ENABLE`, `VMSCA_PORT`, `VMSCA_USERNAME`, `VMSCA_PASSWORD`, `VMSCA_TEMPLATE` (validated under the `msca` pseudo-service). Point SDDC Manager's Certificate Authority at `https://<control-plane FQDN>:<VMSCA_PORT>/certsrv` with CA Type "Microsoft". See `vcf-msca-emulation_design.md` for the full contract, risks, and validation.
+
+---
+
 ## 2026-07-22 (Zitadel uses the v4 Login V2 UI)
 
 ### Features

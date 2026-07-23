@@ -54,6 +54,14 @@ var schema = []requirement{
 	{"CA_POSTGRES_RO_USER", []string{"ca"}, []func(string) error{checkPgIdentifier}},
 	{"CA_POSTGRES_RO_PASSWORD", []string{"ca"}, []func(string) error{checkNotPlaceholder}},
 
+	// Microsoft-CA web-enrollment emulator (certsrv) for VCF. Fronts step-ca so
+	// SDDC Manager can enroll via its Microsoft CA integration.
+	{"VMSCA_ENABLE", []string{"msca"}, []func(string) error{checkBool}},
+	{"VMSCA_PORT", []string{"msca"}, []func(string) error{checkPort}},
+	{"VMSCA_USERNAME", []string{"msca"}, nil},
+	{"VMSCA_PASSWORD", []string{"msca"}, []func(string) error{checkNotPlaceholder}},
+	{"VMSCA_TEMPLATE", []string{"msca"}, nil},
+
 	// Technitium DNS (require_technitium_vars plus the admin password used to
 	// rotate the first-boot credentials).
 	{"DNS_FQDN", []string{"technitium"}, []func(string) error{checkFQDN}},

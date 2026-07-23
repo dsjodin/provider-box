@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,6 +21,7 @@ import (
 	"github.com/dsjodin/labprovider/services/control-plane/internal/docker"
 	"github.com/dsjodin/labprovider/services/control-plane/internal/envfile"
 	"github.com/dsjodin/labprovider/services/control-plane/internal/ipam"
+	"github.com/dsjodin/labprovider/services/control-plane/internal/msca"
 	"github.com/dsjodin/labprovider/services/control-plane/internal/server"
 )
 
@@ -71,6 +75,13 @@ func main() {
 		}
 	}
 
+	// Optional Microsoft-CA web-enrollment emulator (certsrv) for VCF; wired
+	// below when the managed config enables it.
+	var (
+		mscaHandler http.Handler
+		mscaAddr    string
+	)
+
 	// The deploy engine needs the shipped example config (baked into the image
 	// by install.sh's build). Without it - the legacy --dashboard deployment -
 	// the server stays a read-only dashboard.
@@ -107,6 +118,12 @@ func main() {
 		engine.Register(deploy.SFTP{})
 		engine.Register(deploy.DNSSync{})
 		opt.Engine = engine
+
+		if h, addr, err := buildMSCA(store, logger); err != nil {
+			logger.Warn("msca certsrv emulator disabled", "err", err)
+		} else if h != nil {
+			mscaHandler, mscaAddr = h, addr
+		}
 	} else {
 		logger.Warn("deploy engine disabled: example config not found", "path", cfg.ExamplePath)
 	}
@@ -136,6 +153,30 @@ func main() {
 	// malformed cert/key must not crash-loop the server: warn and fall back to
 	// HTTP, and reflect the mode actually used in the startup log.
 	useTLS := resolveTLS(cfg.TLSCert, cfg.TLSKey, logger)
+
+	// The certsrv emulator is a second listener (its own port) that reuses the
+	// control plane's TLS leaf, so VCF reaches it at the control plane FQDN.
+	if mscaHandler != nil {
+		mscaSrv := &http.Server{Addr: mscaAddr, Handler: mscaHandler, ReadHeaderTimeout: 10 * time.Second}
+		go func() {
+			<-ctx.Done()
+			shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancelShutdown()
+			_ = mscaSrv.Shutdown(shutdownCtx)
+		}()
+		go func() {
+			logger.Info("starting msca certsrv emulator", "addr", mscaAddr, "tls", useTLS)
+			var err error
+			if useTLS {
+				err = mscaSrv.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)
+			} else {
+				err = mscaSrv.ListenAndServe()
+			}
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("msca listener exited", "err", err)
+			}
+		}()
+	}
 
 	logger.Info("starting control-plane",
 		"addr", cfg.Addr, "fqdn", cfg.FQDN, "tls", useTLS,
@@ -169,4 +210,61 @@ func resolveTLS(certPath, keyPath string, logger *slog.Logger) bool {
 		return false
 	}
 	return true
+}
+
+// buildMSCA constructs the certsrv emulator handler from the managed config
+// when VMSCA_ENABLE is true, returning (nil, "", nil) when it is off. The signer
+// and CA-chain closures reload the managed config on each request, so a CA
+// deployed or reconfigured after startup is picked up without a restart -
+// exactly like the dashboard's /api/csr/sign path.
+func buildMSCA(store envfile.Store, logger *slog.Logger) (http.Handler, string, error) {
+	content, saved, err := store.Load()
+	if err != nil {
+		return nil, "", err
+	}
+	if !saved {
+		return nil, "", nil
+	}
+	env := envfile.Parse(content)
+	if !strings.EqualFold(env["VMSCA_ENABLE"], "true") {
+		return nil, "", nil
+	}
+	user, pass := env["VMSCA_USERNAME"], env["VMSCA_PASSWORD"]
+	if user == "" || pass == "" {
+		return nil, "", fmt.Errorf("VMSCA_USERNAME and VMSCA_PASSWORD must be set")
+	}
+	port := env["VMSCA_PORT"]
+	if port == "" {
+		port = "8444"
+	}
+
+	sign := func(ctx context.Context, csr []byte) ([]byte, error) {
+		content, saved, err := store.Load()
+		if err != nil {
+			return nil, err
+		}
+		if !saved {
+			return nil, fmt.Errorf("no configuration saved")
+		}
+		return deploy.SignCSR(ctx, envfile.Parse(content), csr)
+	}
+	caChain := func() ([]byte, error) {
+		content, _, err := store.Load()
+		if err != nil {
+			return nil, err
+		}
+		dir := envfile.Parse(content)["CA_DATA_DIR"]
+		inter, err := os.ReadFile(filepath.Join(dir, "certs", "intermediate_ca.crt"))
+		if err != nil {
+			return nil, err
+		}
+		root, err := os.ReadFile(filepath.Join(dir, "certs", "root_ca.crt"))
+		if err != nil {
+			return nil, err
+		}
+		return append(inter, root...), nil
+	}
+
+	h := msca.New(msca.Config{Username: user, Password: pass, Template: env["VMSCA_TEMPLATE"]}, sign, caChain, logger)
+	return h, ":" + port, nil
 }

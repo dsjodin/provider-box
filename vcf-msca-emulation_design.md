@@ -15,6 +15,10 @@ against this lab's CA the same way it does against a real Microsoft CA.
 
 ---
 
+> Status: implemented. Package `services/control-plane/internal/msca` serves the
+> certsrv surface; the control plane starts it as a second listener when
+> `VMSCA_ENABLE=true`. See sections 5-8 for the as-built shape and how to test it.
+
 ## 1. Feasibility conclusion
 
 **Feasible, low-risk.** The `certsrv` "protocol" is not a real API - it is about five
@@ -119,8 +123,9 @@ New package `services/control-plane/internal/msca`, wired into the control-plane
 - `SignCSR` returns a full-chain PEM. Split it: the first `CERTIFICATE` block is the leaf
   for `certnew.cer`; the CA chain for `certnew.p7b` is built from
   `${CA_DATA_DIR}/certs/intermediate_ca.crt` + `root_ca.crt` (files already read elsewhere
-  in the tree - see `internal/certs` and `IssueCert`). Encode the chain as PKCS#7 via
-  `crypto/x509` + `encoding/asn1` (degenerate SignedData) - no new dependency needed.
+  in the tree - see `internal/certs` and `IssueCert`). The chain is encoded as a degenerate
+  PKCS#7 SignedData in `internal/msca/pkcs7.go` using `encoding/asn1` (the stdlib has no
+  PKCS#7 encoder) - no new dependency. Its output parses with `openssl pkcs7 -print_certs`.
 
 **State** - a `ReqID -> leaf` map guarded by a mutex.
 - In-memory is sufficient for a single-node lab: VCF POSTs then GETs seconds apart.
@@ -130,41 +135,45 @@ New package `services/control-plane/internal/msca`, wired into the control-plane
 - `ReqID` is a monotonic counter (per-process); `CACert` is a reserved sentinel handled
   before the numeric lookup.
 
-**Auth + TLS** - a dedicated listener, separate from the admin control-plane port.
-- Port `VMSCA_PORT` (default 8443), FQDN `VMSCA_FQDN` (e.g. `certsrv.sddc.lab`).
-- Serve TLS with a step-ca leaf issued through `deploy.IssueCert`
-  (`internal/deploy/stepca.go`) for `VMSCA_FQDN`, reusing the existing readiness gate
-  (`requireCAReady`) and full-chain/ownership handling.
+**Auth + TLS** - a dedicated listener on its own port, separate from the admin
+control-plane port, so the VCF-facing surface is isolated even though it shares the
+process.
+- Port `VMSCA_PORT` (default 8444). The control plane runs with host networking, so
+  binding the port is all that is needed - no compose port mapping.
+- TLS reuses the control plane's own step-ca leaf (`CONTROL_PLANE_TLS_CERT` /
+  `_TLS_KEY`), so no new issuance path, `IssueCert` call, or CA-readiness coupling at
+  startup. The consequence is that VCF reaches the emulator at the **control plane FQDN**
+  on `VMSCA_PORT` (the cert's SAN), not a separate `certsrv.*` name. If a distinct
+  enrollment hostname is ever wanted, issue a dedicated leaf and point the listener at it.
 - HTTP Basic Auth against `VMSCA_USERNAME` / `VMSCA_PASSWORD`, compared with
   `crypto/subtle.ConstantTimeCompare`. A missing/invalid header returns 401 with
-  `WWW-Authenticate: Basic realm="certsrv"` - which is exactly the credential-probe
-  behavior the client keys on at `/certsrv/`.
-- Keeping this off the admin control-plane port isolates the external-facing surface even
-  though it runs in the same process.
+  `WWW-Authenticate: Basic realm="certsrv"` - exactly the credential-probe behavior the
+  client keys on at `/certsrv/`.
 
-**Startup** - gate on `VMSCA_ENABLE`. When true, `cmd/control-plane/main.go` starts the
-second listener after the CA is ready; when false, nothing binds.
+**Startup** - gate on `VMSCA_ENABLE`. `cmd/control-plane/main.go` reads the managed config
+at startup (`buildMSCA`); when `VMSCA_ENABLE=true` and credentials are set it starts the
+second listener, otherwise nothing binds. The signer and CA-chain closures reload the
+managed config on each request, so a CA deployed or reconfigured after startup is picked up
+without a restart (same reload behavior as `/api/csr/sign`).
 
-**Config** - add to `config/labprovider.env.example` and validate in
-`internal/envfile/schema.go`:
+**Config** - added to `config/labprovider.env.example` and validated in
+`internal/envfile/schema.go` (pseudo-service `msca`):
 
 | Key | Purpose | Default |
 |---|---|---|
 | `VMSCA_ENABLE` | turn the certsrv front-end on/off | `false` |
-| `VMSCA_FQDN` | enrollment hostname (TLS SAN + VCF target) | `certsrv.sddc.lab` |
-| `VMSCA_PORT` | listener port | `8443` |
-| `VMSCA_USERNAME` | Basic Auth user VCF is configured with | (required when enabled) |
-| `VMSCA_PASSWORD` | Basic Auth password | (required when enabled) |
+| `VMSCA_PORT` | listener port (reached at the control plane FQDN) | `8444` |
+| `VMSCA_USERNAME` | Basic Auth user VCF is configured with | `vcf-enroll` |
+| `VMSCA_PASSWORD` | Basic Auth password | (change from placeholder) |
 | `VMSCA_TEMPLATE` | accepted CertificateTemplate name | `VMware` |
 
 ### Files
-- **Reuse:** `internal/deploy/sign.go` (`SignCSR`), `internal/deploy/stepca.go`
-  (`IssueCert`, `requireCAReady`, loopback-pinned client), `internal/certs/certs.go`
-  (pattern for reading CA data from `CA_DATA_DIR`).
-- **Extend:** `internal/server/controlplane.go` / `cmd/control-plane/main.go` (second
-  listener wiring), `config/labprovider.env.example`, `internal/envfile/schema.go`,
-  `README.md`.
-- **New:** `internal/msca/certsrv.go` (+ `certsrv_test.go`).
+- **Reuse:** `internal/deploy/sign.go` (`SignCSR`), `${CA_DATA_DIR}/certs/*` for the chain
+  (as `internal/certs` and `IssueCert` do).
+- **Extend:** `cmd/control-plane/main.go` (`buildMSCA` + second listener),
+  `config/labprovider.env.example`, `internal/envfile/schema.go`.
+- **New:** `internal/msca/certsrv.go`, `internal/msca/pkcs7.go`,
+  `internal/msca/certsrv_test.go`.
 - **Prior art:** `step-ca_api_design.md` (historical wrapper-service reasoning - Go vs
   Python, inventory, issuance path - much of it applies).
 
@@ -174,7 +183,8 @@ second listener after the CA is ready; when false, nothing binds.
 
 In SDDC Manager -> Certificate Authority -> Edit:
 - CA Type: **Microsoft**.
-- Web Enrollment URL: `https://{VMSCA_FQDN}:{VMSCA_PORT}/certsrv`.
+- Web Enrollment URL: `https://<control-plane FQDN>:<VMSCA_PORT>/certsrv` (the host must
+  match the control plane's TLS cert SAN, since the emulator reuses that leaf).
 - Username / Password: `VMSCA_USERNAME` / `VMSCA_PASSWORD`.
 - Template Name: value of `VMSCA_TEMPLATE` (default `VMware`).
 
@@ -207,18 +217,24 @@ the chain via `certnew.p7b` during enrollment.
 
 ## 8. Validation
 
-**Unit (`internal/msca/certsrv_test.go`)** - no live CA needed for most of it:
-- `/certsrv/` returns 401 without creds and 200 with them.
+**Unit (`internal/msca/certsrv_test.go`)** - implemented, no live CA needed (a stub Signer
+returns a fixture chain): `go test ./internal/msca/`.
+- `/certsrv/` returns 401 without creds and 200 with them (with a Basic challenge).
 - `certfnsh.asp` response body matches `certnew.cer\?ReqID=(\d+)&`.
 - `certcarc.asp` response body matches `var nRenewals=(\d+);`.
-- `certnew.cer` sets `Content-Type: application/pkix-cert` and returns exactly one cert;
-  `certnew.p7b` sets `application/x-pkcs7-certificates` and parses as a PKCS#7 carrying
-  intermediate + root. Stub `SignCSR` with a fixture cert so these run without step-ca.
+- `certnew.cer` sets `Content-Type: application/pkix-cert` and returns exactly the issued
+  leaf; `certnew.p7b` sets `application/x-pkcs7-certificates` and round-trips as a PKCS#7
+  carrying intermediate + root.
 - Template mismatch (`CertAttrib` != `VMSCA_TEMPLATE`) is rejected.
 
+The PKCS#7 encoder was additionally verified end-to-end over a real socket with `curl`
+plus `openssl pkcs7 -print_certs` (a throwaway smoke test), confirming a real PKCS#7
+parser accepts the output.
+
 **End-to-end** - against a running lab:
-1. Deploy step-ca and enable `VMSCA_*`; confirm the listener serves its step-ca leaf on
-   `VMSCA_PORT` and `/certsrv/` prompts for Basic Auth.
+1. Deploy step-ca, set `VMSCA_ENABLE=true` and the `VMSCA_*` credentials, and restart the
+   control plane; confirm the log line `starting msca certsrv emulator` and that
+   `curl -k -u user:pass https://<control-plane FQDN>:<VMSCA_PORT>/certsrv/` returns 200.
 2. Reproduce the client flow with `curl` (POST a test CSR to `certfnsh.asp`, extract the
    `ReqID`, GET `certnew.cer`, GET `certnew.p7b`) and verify the leaf validates against the
    step-ca root using the returned chain.
