@@ -171,7 +171,6 @@ func TestRenderGolden(t *testing.T) {
 		"docker-compose.authentik.yml.tpl",
 		"authentik-blueprint.yaml.tpl",
 		"docker-compose.zitadel.yml.tpl",
-		"zitadel-nginx.conf.tpl",
 		"docker-compose.sftpgo.yml.tpl",
 		"traefik.yml.tpl",
 		"traefik-dynamic.yml.tpl",

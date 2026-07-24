@@ -73,14 +73,7 @@ func (z Zitadel) Deploy(ctx context.Context, rc *RunCtx) error {
 		return err
 	}
 
-	if err := IssueCert(ctx, rc, env["ZITADEL_FQDN"], certDir, "zitadel"); err != nil {
-		return err
-	}
-
 	if err := Render("docker-compose.zitadel.yml.tpl", env, runtime+"/docker-compose.yml", 0o644); err != nil {
-		return err
-	}
-	if err := Render("zitadel-nginx.conf.tpl", env, runtime+"/nginx.conf", 0o644); err != nil {
 		return err
 	}
 	cmp := rc.Compose("zitadel")
@@ -196,7 +189,9 @@ func newZitadelAPI(env map[string]string) (*zitadelAPI, error) {
 }
 
 func (a *zitadelAPI) base() string {
-	return fmt.Sprintf("https://%s:%s", a.env["ZITADEL_FQDN"], a.env["ZITADEL_PORT"])
+	// Portless external URL; the client dials 127.0.0.1:443 (Traefik), which
+	// terminates the wildcard and routes to the core by the ZITADEL_FQDN host.
+	return fmt.Sprintf("https://%s", a.env["ZITADEL_FQDN"])
 }
 
 func (a *zitadelAPI) client() *http.Client {
@@ -547,6 +542,6 @@ func logZitadelAdminLogin(ctx context.Context, rc *RunCtx, api *zitadelAPI) {
 		// generated org domain, visible in the Console user list.
 		loginName = env["ZITADEL_ADMIN_USERNAME"] + " (Zitadel appends the org domain; see the Console user list for the full login name)"
 	}
-	rc.Log("Zitadel Console admin login name: %s (use the configured ZITADEL_ADMIN_PASSWORD) at https://%s:%s/ui/console.",
-		loginName, env["ZITADEL_FQDN"], env["ZITADEL_PORT"])
+	rc.Log("Zitadel Console admin login name: %s (use the configured ZITADEL_ADMIN_PASSWORD) at https://%s/ui/console.",
+		loginName, env["ZITADEL_FQDN"])
 }

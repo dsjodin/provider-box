@@ -17,8 +17,8 @@ services:
   zitadel:
     image: {{.ZITADEL_IMAGE}}
     restart: unless-stopped
-    # TLS is terminated by the proxy below; the core serves plain HTTP on 8080
-    # and trusts the proxy's X-Forwarded-Proto (ExternalSecure=true).
+    # TLS is terminated by Traefik; the core serves plain HTTP on 8080 and trusts
+    # Traefik's X-Forwarded-Proto (ExternalSecure=true, ExternalPort=443).
     command: start-from-init --masterkeyFromEnv --tlsMode external
     depends_on:
       db:
@@ -26,7 +26,7 @@ services:
     environment:
       ZITADEL_MASTERKEY: "{{.ZITADEL_MASTERKEY}}"
       ZITADEL_EXTERNALDOMAIN: "{{.ZITADEL_FQDN}}"
-      ZITADEL_EXTERNALPORT: "{{.ZITADEL_PORT}}"
+      ZITADEL_EXTERNALPORT: "443"
       ZITADEL_EXTERNALSECURE: "true"
       # v4: require the decoupled Login V2 UI (the `login` service below).
       ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "true"
@@ -56,6 +56,16 @@ services:
       ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /machinekey/login-client.pat
     volumes:
       - {{.ZITADEL_DIR}}/machinekey:/machinekey
+    networks:
+      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.zitadel.rule=Host(`{{.ZITADEL_FQDN}}`)"
+      - "traefik.http.routers.zitadel.entrypoints=websecure"
+      - "traefik.http.routers.zitadel.tls=true"
+      - "traefik.http.services.zitadel.loadbalancer.server.port=8080"
 
   login:
     image: {{.ZITADEL_LOGIN_IMAGE}}
@@ -70,18 +80,22 @@ services:
       # Zitadel would see Host: zitadel and fail to match the virtual instance
       # (which is keyed on the external domain). Override the Host header so the
       # instance lookup resolves and public URLs carry the external host:port.
-      CUSTOM_REQUEST_HEADERS: "Host:{{.ZITADEL_FQDN}}:{{.ZITADEL_PORT}}"
+      CUSTOM_REQUEST_HEADERS: "Host:{{.ZITADEL_FQDN}}"
     volumes:
       - {{.ZITADEL_DIR}}/machinekey:/machinekey:ro
+    networks:
+      - default
+      - proxy
+    # Login V2 UI: Zitadel core redirects every sign-in to /ui/v2/login, served
+    # by this container. The Host+PathPrefix rule outranks the core's Host rule.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.zitadel-login.rule=Host(`{{.ZITADEL_FQDN}}`) && PathPrefix(`/ui/v2/login`)"
+      - "traefik.http.routers.zitadel-login.entrypoints=websecure"
+      - "traefik.http.routers.zitadel-login.tls=true"
+      - "traefik.http.services.zitadel-login.loadbalancer.server.port=3000"
 
+networks:
   proxy:
-    image: {{.ZITADEL_NGINX_IMAGE}}
-    restart: unless-stopped
-    depends_on:
-      - zitadel
-      - login
-    ports:
-      - "{{.ZITADEL_PORT}}:8443"
-    volumes:
-      - {{.WORKDIR}}/zitadel/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - {{.ZITADEL_DIR}}/certs/{{.ZITADEL_FQDN}}:/etc/labprovider/certs:ro
+    external: true
