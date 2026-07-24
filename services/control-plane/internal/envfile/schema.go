@@ -63,6 +63,14 @@ var schema = []requirement{
 	{"VMSCA_PASSWORD", []string{"msca"}, []func(string) error{checkNotPlaceholder}},
 	{"VMSCA_TEMPLATE", []string{"msca"}, nil},
 
+	// Traefik reverse proxy (single :80/:443 ingress, wildcard termination).
+	{"TRAEFIK_ENABLE", []string{"traefik"}, []func(string) error{checkBool}},
+	{"TRAEFIK_IMAGE", []string{"traefik"}, []func(string) error{checkImage}},
+	{"TRAEFIK_FQDN", []string{"traefik"}, []func(string) error{checkFQDN}},
+	{"TRAEFIK_DIR", []string{"traefik"}, []func(string) error{checkAbsPath}},
+	{"TRAEFIK_DASHBOARD_USER", []string{"traefik"}, nil},
+	{"TRAEFIK_DASHBOARD_PASSWORD", []string{"traefik"}, []func(string) error{checkNotPlaceholder}},
+
 	// Technitium DNS (require_technitium_vars plus the admin password used to
 	// rotate the first-boot credentials).
 	{"DNS_FQDN", []string{"technitium"}, []func(string) error{checkFQDN}},

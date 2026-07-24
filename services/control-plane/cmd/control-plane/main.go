@@ -117,6 +117,7 @@ func main() {
 		engine.Register(deploy.S3{})
 		engine.Register(deploy.SFTP{})
 		engine.Register(deploy.DNSSync{})
+		engine.Register(deploy.Traefik{})
 		opt.Engine = engine
 
 		if h, addr, err := buildMSCA(store, logger); err != nil {

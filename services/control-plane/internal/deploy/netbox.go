@@ -388,6 +388,10 @@ func builtinServiceFQDNs(env map[string]string) []string {
 	if strings.EqualFold(env["VMSCA_ENABLE"], "true") && env["VMSCA_FQDN"] != "" {
 		fqdns = append(fqdns, env["VMSCA_FQDN"])
 	}
+	// The Traefik dashboard name is only meaningful when Traefik runs.
+	if strings.EqualFold(env["TRAEFIK_ENABLE"], "true") && env["TRAEFIK_FQDN"] != "" {
+		fqdns = append(fqdns, env["TRAEFIK_FQDN"])
+	}
 	return fqdns
 }
 

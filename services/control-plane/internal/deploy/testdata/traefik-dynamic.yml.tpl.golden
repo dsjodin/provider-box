@@ -1,0 +1,50 @@
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /certs/wildcard.crt
+        keyFile: /certs/wildcard.key
+
+http:
+  serversTransports:
+    insecure:
+      insecureSkipVerify: true
+
+  middlewares:
+    dashboard-auth:
+      basicAuth:
+        usersFile: /usersfile
+
+  routers:
+    dashboard:
+      rule: "Host(`traefik.sddc.lab`)"
+      entryPoints:
+        - websecure
+      service: api@internal
+      middlewares:
+        - dashboard-auth
+      tls: {}
+    control-plane:
+      rule: "Host(`dashboard.sddc.lab`)"
+      entryPoints:
+        - websecure
+      service: control-plane
+      tls: {}
+    certsrv:
+      rule: "Host(`certsrv.sddc.lab`)"
+      entryPoints:
+        - websecure
+      service: certsrv
+      tls: {}
+
+  services:
+    control-plane:
+      loadBalancer:
+        serversTransport: insecure
+        servers:
+          - url: "https://192.168.12.121:8445"
+    certsrv:
+      loadBalancer:
+        serversTransport: insecure
+        servers:
+          - url: "https://192.168.12.121:8446"

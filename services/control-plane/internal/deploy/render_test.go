@@ -137,6 +137,16 @@ var testEnv = map[string]string{
 	"SFTP_DATA_DIR":       "/opt/labprovider/sftpgo/data",
 	"SFTP_HOME_DIR":       "/opt/labprovider/sftpgo/home",
 	"SFTP_CERT_DIR":       "/opt/labprovider/sftpgo/certs",
+
+	"TRAEFIK_IMAGE":      "docker.io/library/traefik:v3.7.7",
+	"TRAEFIK_FQDN":       "traefik.sddc.lab",
+	"TRAEFIK_DIR":        "/opt/labprovider/traefik",
+	"CONTROL_PLANE_FQDN": "dashboard.sddc.lab",
+	"CONTROL_PLANE_PORT": "8445",
+	"VMSCA_ENABLE":       "true",
+	"VMSCA_FQDN":         "certsrv.sddc.lab",
+	"VMSCA_PORT":         "8446",
+	"HOST_IPV4":          "192.168.12.121",
 }
 
 // TestRenderGolden is the template parity harness: each converted template is
@@ -163,6 +173,9 @@ func TestRenderGolden(t *testing.T) {
 		"docker-compose.zitadel.yml.tpl",
 		"zitadel-nginx.conf.tpl",
 		"docker-compose.sftpgo.yml.tpl",
+		"traefik.yml.tpl",
+		"traefik-dynamic.yml.tpl",
+		"docker-compose.traefik.yml.tpl",
 	} {
 		t.Run(name, func(t *testing.T) {
 			dest := filepath.Join(t.TempDir(), "out")

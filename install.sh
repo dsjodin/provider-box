@@ -86,6 +86,11 @@ CONF
   fi
 
   install -d -m 0755 /opt/labprovider /opt/labprovider/control-plane
+
+  # Shared network the Traefik ingress and the bridge service stacks join. It
+  # must exist before any stack references it as an external network, so it is
+  # created here rather than by the Traefik deploy module.
+  docker network inspect proxy >/dev/null 2>&1 || docker network create proxy
 }
 
 # --- Build and run the control plane -----------------------------------------
