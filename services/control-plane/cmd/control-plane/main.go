@@ -157,8 +157,8 @@ func main() {
 	// HTTP, and reflect the mode actually used in the startup log.
 	useTLS := resolveTLS(cfg.TLSCert, cfg.TLSKey, logger)
 
-	// The certsrv emulator is a second listener (its own port) that reuses the
-	// control plane's TLS leaf, so VCF reaches it at the control plane FQDN.
+	// The certsrv emulator is a second listener on its own port, serving plain
+	// HTTP behind Traefik (which terminates the wildcard and fronts VMSCA_FQDN).
 	if mscaHandler != nil {
 		mscaSrv := &http.Server{Addr: mscaAddr, Handler: mscaHandler, ReadHeaderTimeout: 10 * time.Second}
 		go func() {

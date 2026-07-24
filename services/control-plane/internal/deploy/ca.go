@@ -185,20 +185,8 @@ func (c CA) Deploy(ctx context.Context, rc *RunCtx) error {
 		return err
 	}
 
-	// Issue the control plane's own leaf so it serves HTTPS after a restart
-	// (main.go's TLS fallback tolerates the pre-CA window).
-	if env["CONTROL_PLANE_FQDN"] != "" && env["CONTROL_PLANE_CERT_DIR"] != "" {
-		// The certsrv listener reuses this leaf, so add its name as a SAN when
-		// the MSCA emulator is enabled - VCF then reaches certsrv over TLS.
-		var extraSANs []string
-		if strings.EqualFold(env["VMSCA_ENABLE"], "true") && env["VMSCA_FQDN"] != "" {
-			extraSANs = append(extraSANs, env["VMSCA_FQDN"])
-		}
-		if err := IssueCert(ctx, rc, env["CONTROL_PLANE_FQDN"], env["CONTROL_PLANE_CERT_DIR"], "control-plane", extraSANs...); err != nil {
-			return err
-		}
-		rc.Log("Control plane certificate issued; restart the control-plane container to serve HTTPS.")
-	}
+	// The control plane and certsrv serve plain HTTP behind Traefik (which
+	// terminates the wildcard), so no dedicated leaf is issued for them here.
 
 	rc.Log("step-ca is ready at https://%s:%s (root certificate at /roots.pem).", env["CA_FQDN"], env["CA_PORT"])
 	return nil

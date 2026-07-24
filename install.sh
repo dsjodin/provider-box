@@ -100,15 +100,13 @@ run_control_plane() {
 
   docker rm -f "${CONTROL_PLANE_NAME}" >/dev/null 2>&1 || true
   echo "Starting the control plane."
-  # The TLS paths point at the leaf the CA deployer issues for the control
-  # plane; until the CA is deployed they do not exist and the server falls
-  # back to plaintext HTTP with a logged warning.
+  # The control plane serves plain HTTP; Traefik terminates TLS and fronts it at
+  # https://<CONTROL_PLANE_FQDN> once the ingress is deployed. Before that (first
+  # config/deploy), reach it directly at http://<host>:${CONTROL_PLANE_PORT}.
   docker run -d --name "${CONTROL_PLANE_NAME}" \
     --restart unless-stopped \
     --network host \
     -e CONTROL_PLANE_ADDR=":${CONTROL_PLANE_PORT}" \
-    -e CONTROL_PLANE_TLS_CERT="/opt/labprovider/control-plane/certs/control-plane.crt" \
-    -e CONTROL_PLANE_TLS_KEY="/opt/labprovider/control-plane/certs/control-plane.key" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /opt/labprovider:/opt/labprovider \
     -v /etc:/host/etc \

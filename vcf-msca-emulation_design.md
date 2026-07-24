@@ -143,11 +143,10 @@ process.
   networking, so binding the port is all that is needed - no compose port mapping, but a
   collision fails the bind and only the emulator listener exits (logged), leaving the rest
   of the control plane up.
-- TLS reuses the control plane's own step-ca leaf (`CONTROL_PLANE_TLS_CERT` /
-  `_TLS_KEY`), so no new issuance path, `IssueCert` call, or CA-readiness coupling at
-  startup. The consequence is that VCF reaches the emulator at the **control plane FQDN**
-  on `VMSCA_PORT` (the cert's SAN), not a separate `certsrv.*` name. If a distinct
-  enrollment hostname is ever wanted, issue a dedicated leaf and point the listener at it.
+- The listener serves plain HTTP; Traefik terminates TLS with its `*.<domain>`
+  wildcard and fronts the emulator at `https://<VMSCA_FQDN>` (no port). So the
+  emulator itself has no cert, `IssueCert` call, or CA-readiness coupling at startup,
+  and VCF reaches it at its own `certsrv.*` name through the ingress.
 - HTTP Basic Auth against `VMSCA_USERNAME` / `VMSCA_PASSWORD`, compared with
   `crypto/subtle.ConstantTimeCompare`. A missing/invalid header returns 401 with
   `WWW-Authenticate: Basic realm="certsrv"` - exactly the credential-probe behavior the
@@ -186,8 +185,8 @@ without a restart (same reload behavior as `/api/csr/sign`).
 
 In SDDC Manager -> Certificate Authority -> Edit:
 - CA Type: **Microsoft**.
-- Web Enrollment URL: `https://<VMSCA_FQDN>:<VMSCA_PORT>/certsrv` (`VMSCA_FQDN` is
-  carried as an additional SAN on the control plane's leaf, which the emulator reuses).
+- Web Enrollment URL: `https://<VMSCA_FQDN>/certsrv` (no port; Traefik terminates
+  TLS with its wildcard and routes to the emulator's plain-HTTP listener).
 - Username / Password: `VMSCA_USERNAME` / `VMSCA_PASSWORD`.
 - Template Name: value of `VMSCA_TEMPLATE` (default `VMware`).
 

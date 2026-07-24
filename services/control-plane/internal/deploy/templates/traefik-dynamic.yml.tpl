@@ -6,10 +6,6 @@ tls:
         keyFile: /certs/wildcard.key
 
 http:
-  serversTransports:
-    insecure:
-      insecureSkipVerify: true
-
   middlewares:
     dashboard-auth:
       basicAuth:
@@ -42,13 +38,11 @@ http:
   services:
     control-plane:
       loadBalancer:
-        serversTransport: insecure
         servers:
-          - url: "https://{{.HOST_IPV4}}:{{.CONTROL_PLANE_PORT}}"
+          - url: "http://{{.HOST_IPV4}}:{{.CONTROL_PLANE_PORT}}"
 {{- if eq .VMSCA_ENABLE "true"}}
     certsrv:
       loadBalancer:
-        serversTransport: insecure
         servers:
-          - url: "https://{{.HOST_IPV4}}:{{.VMSCA_PORT}}"
+          - url: "http://{{.HOST_IPV4}}:{{.VMSCA_PORT}}"
 {{- end}}
