@@ -63,6 +63,30 @@ After the CA is deployed the control plane issues its own certificate; restart t
 
 Ports are the example-config defaults; adjust to your values.
 
+### Reverse proxy (Traefik)
+
+With `TRAEFIK_ENABLE=true`, a single Traefik ingress on `:80`/`:443` fronts the
+HTTP(S) services so you reach each at its bare FQDN with no port -
+`https://netbox.sddc.lab`, `https://certsrv.sddc.lab/certsrv`, and so on. Traefik
+terminates TLS with one step-ca-issued `*.<SEARCH_DOMAIN>` wildcard leaf (served
+as its default certificate) and routes by `Host`:
+
+- bridge service stacks are discovered via docker labels on a shared external
+  `proxy` network, created by `install.sh`;
+- the host-networked control plane and the certsrv emulator are wired through
+  Traefik's file provider (reachable at `https://dashboard.<domain>` and
+  `https://certsrv.<domain>`).
+
+Because it holds `:80`/`:443`, open those in the firewall when Traefik is enabled.
+The non-HTTP services keep their own ports regardless: DNS (53), NTP (123), syslog
+(514), SFTP (2022), and step-ca (9000). This is a lab-grade setup: Traefik talks
+plain HTTP to backends over the `proxy` network.
+
+Migration is staged. Currently fronted: the control plane, certsrv, SeaweedFS S3
+(path-style: `https://s3.<domain>/<bucket>`), and the SFTPGo admin UI. The
+remaining stacks (depot, netbox, keycloak, authentik, zitadel) still publish their
+own ports and are migrated in later increments.
+
 ## Overview
 
 ![labprovider Overview](docs/images/labprovider-overview.png)

@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## 2026-07-24 (Traefik reverse proxy; certsrv gets its own FQDN)
+
+### Features
+- New `Traefik` deploy module: a single ingress on `:80`/`:443` that terminates TLS with one step-ca-issued `*.<SEARCH_DOMAIN>` wildcard leaf and routes services by their bare FQDN, so operators reach services at `https://<service>.<domain>` with no port to remember. Bridge service stacks are discovered via docker labels on a shared external `proxy` network; the host-networked control plane and the certsrv emulator are wired through Traefik's file provider, so both are reachable at `https://<name>` with no port. New config `TRAEFIK_ENABLE`, `TRAEFIK_IMAGE`, `TRAEFIK_FQDN`, `TRAEFIK_DIR`, `TRAEFIK_DASHBOARD_USER`, `TRAEFIK_DASHBOARD_PASSWORD` (validated under the `traefik` pseudo-service); `TRAEFIK_FQDN` is published in DNS. `install.sh` creates the shared `proxy` network in host prep (it must exist before any stack references it as an external network). Lab posture: Traefik talks plain HTTP to backends over the proxy network.
+- certsrv (the Microsoft-CA web-enrollment emulator) gets its own name, `VMSCA_FQDN` (default `certsrv.sddc.lab`). When `VMSCA_ENABLE=true` it is published in DNS as an A record to `HOST_IPV4` and added as a SAN on the control plane's leaf (which the certsrv listener reuses), so VCF can target `https://<VMSCA_FQDN>:<VMSCA_PORT>/certsrv` - or, once Traefik fronts it, `https://<VMSCA_FQDN>/certsrv` with no port. `IssueCert` and `CertMatchesDNSIdentity` now accept additional SANs (a leaf missing a newly required SAN is reissued).
+
+### Changes
+- Migrated the first service stacks behind Traefik with plain-HTTP backends: SeaweedFS S3 (already plain HTTP; added a path-style `Host` router) and SFTPGo (admin UI switched to plain HTTP fronted by Traefik, per-service TLS cert dropped; SFTP stays on its own port). Readiness and the SFTPGo backup-user API use HTTP on the loopback-published port, so deploy-time behavior is unchanged. The remaining stacks (depot, netbox, keycloak, authentik, zitadel) and step-ca stay on their own ports for now; the L4 services (DNS 53, NTP 123, syslog 514, SFTP 2022) always do.
+
+---
+
 ## 2026-07-23 (remove the legacy bash bootstrap; documentation to v2)
 
 ### Removed
