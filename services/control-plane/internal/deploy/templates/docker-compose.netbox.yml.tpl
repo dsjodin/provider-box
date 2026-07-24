@@ -53,16 +53,24 @@ services:
       SUPERUSER_EMAIL: "{{.NETBOX_SUPERUSER_EMAIL}}"
       SUPERUSER_PASSWORD: "{{.NETBOX_SUPERUSER_PASSWORD}}"
       SKIP_SUPERUSER: "false"
+    # TLS is terminated by Traefik; NetBox serves plain HTTP on 8080, fronted at
+    # https://{{.NETBOX_FQDN}}. The host port is kept on the loopback for
+    # deploy-time readiness and for the dns-sync/dashboard consumers.
+    ports:
+      - "{{.NETBOX_PORT}}:8080"
     volumes:
       - {{.NETBOX_MEDIA_DIR}}:/opt/netbox/netbox/media
+    networks:
+      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.netbox.rule=Host(`{{.NETBOX_FQDN}}`)"
+      - "traefik.http.routers.netbox.entrypoints=websecure"
+      - "traefik.http.routers.netbox.tls=true"
+      - "traefik.http.services.netbox.loadbalancer.server.port=8080"
 
-  netbox-https:
-    image: {{.NETBOX_NGINX_IMAGE}}
-    restart: unless-stopped
-    depends_on:
-      - netbox
-    ports:
-      - "{{.NETBOX_PORT}}:8443"
-    volumes:
-      - {{.NETBOX_DIR}}/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - {{.NETBOX_DIR}}/certs:/etc/labprovider/certs:ro
+networks:
+  proxy:
+    external: true

@@ -11,7 +11,7 @@ services:
       - "netbox.sddc.lab:127.0.0.1"
       - "dns.sddc.lab:127.0.0.1"
     environment:
-      NETBOX_URL: "https://netbox.sddc.lab:8444"
+      NETBOX_URL: "http://netbox.sddc.lab:8444"
       NETBOX_TOKEN_FILE: "/run/labprovider/secrets/netbox.token"
       NETBOX_CA_BUNDLE: "/etc/labprovider/certs/root_ca.crt"
       TECHNITIUM_URL: "https://dns.sddc.lab:53443"

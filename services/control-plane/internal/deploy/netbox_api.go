@@ -6,9 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
-	"path/filepath"
+	"time"
 )
 
 // netboxAPI is a minimal client for the NetBox REST API over the pinned
@@ -23,12 +24,24 @@ type netboxAPI struct {
 }
 
 func newNetboxAPI(env map[string]string) (*netboxAPI, error) {
-	client, err := pinnedHTTPSClient(filepath.Join(env["CA_DATA_DIR"], "certs", "root_ca.crt"))
-	if err != nil {
-		return nil, err
+	// NetBox serves plain HTTP behind Traefik; reach it on the loopback-published
+	// port (dial 127.0.0.1 regardless of the FQDN in the URL), so provisioning
+	// does not depend on DNS at deploy time.
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				_, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				return dialer.DialContext(ctx, network, net.JoinHostPort("127.0.0.1", port))
+			},
+		},
 	}
 	return &netboxAPI{
-		base:   fmt.Sprintf("https://%s:%s", env["NETBOX_FQDN"], env["NETBOX_PORT"]),
+		base:   fmt.Sprintf("http://%s:%s", env["NETBOX_FQDN"], env["NETBOX_PORT"]),
 		client: client,
 	}, nil
 }
@@ -184,4 +197,3 @@ func (n *netboxAPI) retireTokensByDescription(ctx context.Context, rc *RunCtx, d
 		}
 	}
 }
-

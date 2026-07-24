@@ -72,7 +72,7 @@ var testEnv = map[string]string{
 	"NETBOX_SUPERUSER_PASSWORD":   "nbsu",
 
 	"DNS_SYNC_IMAGE":                     "labprovider/dns-sync:0.1.0",
-	"DNS_SYNC_NETBOX_URL":                "https://netbox.sddc.lab:8444",
+	"DNS_SYNC_NETBOX_URL":                "http://netbox.sddc.lab:8444",
 	"DNS_SYNC_TECHNITIUM_URL":            "https://dns.sddc.lab:53443",
 	"DNS_SYNC_NETBOX_HOST":               "netbox.sddc.lab",
 	"DNS_SYNC_TECHNITIUM_HOST":           "dns.sddc.lab",
@@ -164,7 +164,6 @@ func TestRenderGolden(t *testing.T) {
 		"docker-compose.step-ca.yml.tpl",
 		"docker-compose.technitium.yml.tpl",
 		"docker-compose.netbox.yml.tpl",
-		"netbox-nginx.conf.tpl",
 		"docker-compose.dns-sync.yml.tpl",
 		"docker-compose.depot.yml.tpl",
 		"depot-nginx.conf.tpl",

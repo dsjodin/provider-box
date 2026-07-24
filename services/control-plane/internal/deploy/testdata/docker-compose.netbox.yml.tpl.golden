@@ -53,16 +53,24 @@ services:
       SUPERUSER_EMAIL: "admin@sddc.lab"
       SUPERUSER_PASSWORD: "nbsu"
       SKIP_SUPERUSER: "false"
+    # TLS is terminated by Traefik; NetBox serves plain HTTP on 8080, fronted at
+    # https://netbox.sddc.lab. The host port is kept on the loopback for
+    # deploy-time readiness and for the dns-sync/dashboard consumers.
+    ports:
+      - "8444:8080"
     volumes:
       - /opt/labprovider/netbox/media:/opt/netbox/netbox/media
+    networks:
+      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.netbox.rule=Host(`netbox.sddc.lab`)"
+      - "traefik.http.routers.netbox.entrypoints=websecure"
+      - "traefik.http.routers.netbox.tls=true"
+      - "traefik.http.services.netbox.loadbalancer.server.port=8080"
 
-  netbox-https:
-    image: docker.io/library/nginx:1.31-alpine
-    restart: unless-stopped
-    depends_on:
-      - netbox
-    ports:
-      - "8444:8443"
-    volumes:
-      - /opt/labprovider/netbox/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - /opt/labprovider/netbox/certs:/etc/labprovider/certs:ro
+networks:
+  proxy:
+    external: true

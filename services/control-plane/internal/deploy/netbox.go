@@ -58,15 +58,8 @@ func (nb Netbox) Deploy(ctx context.Context, rc *RunCtx) error {
 	if err != nil {
 		return err
 	}
-	if err := IssueCert(ctx, rc, env["NETBOX_FQDN"], filepath.Join(env["NETBOX_DIR"], "certs"), "netbox"); err != nil {
-		return err
-	}
-
 	renderEnv := withDerived(env, map[string]string{"NETBOX_API_TOKEN_PEPPER_1": pepper})
 	if err := Render("docker-compose.netbox.yml.tpl", renderEnv, filepath.Join(env["NETBOX_DIR"], "docker-compose.yml"), 0o644); err != nil {
-		return err
-	}
-	if err := Render("netbox-nginx.conf.tpl", renderEnv, filepath.Join(env["NETBOX_DIR"], "nginx.conf"), 0o644); err != nil {
 		return err
 	}
 
@@ -78,10 +71,11 @@ func (nb Netbox) Deploy(ctx context.Context, rc *RunCtx) error {
 		return err
 	}
 
-	rc.Log("Waiting for NetBox to become ready at https://%s:%s/ (first start may take several minutes).", env["NETBOX_FQDN"], env["NETBOX_PORT"])
-	caRoot := filepath.Join(env["CA_DATA_DIR"], "certs", "root_ca.crt")
-	url := fmt.Sprintf("https://%s:%s/", env["NETBOX_FQDN"], env["NETBOX_PORT"])
-	if err := WaitHTTPSPinned(ctx, url, caRoot, 120, 5*time.Second); err != nil {
+	// NetBox serves plain HTTP behind Traefik; probe the loopback-published port
+	// so readiness does not depend on DNS. Public access is at https://<NETBOX_FQDN>.
+	rc.Log("Waiting for NetBox to become ready at http://%s:%s/ (first start may take several minutes).", env["NETBOX_FQDN"], env["NETBOX_PORT"])
+	url := fmt.Sprintf("http://%s:%s/", env["NETBOX_FQDN"], env["NETBOX_PORT"])
+	if err := waitHTTPPinned(ctx, url, 120, 5*time.Second); err != nil {
 		return err
 	}
 
@@ -106,8 +100,8 @@ func (nb Netbox) Deploy(ctx context.Context, rc *RunCtx) error {
 	// superuser credentials (IMPROVEMENTS #2).
 	api.retireTokensByDescription(ctx, rc, "labprovider seeding", "seeding")
 
-	rc.Log("NetBox deployed: https://%s:%s (superuser %s). Media: %s",
-		env["NETBOX_FQDN"], env["NETBOX_PORT"], env["NETBOX_SUPERUSER_NAME"], env["NETBOX_MEDIA_DIR"])
+	rc.Log("NetBox deployed: https://%s (superuser %s). Media: %s",
+		env["NETBOX_FQDN"], env["NETBOX_SUPERUSER_NAME"], env["NETBOX_MEDIA_DIR"])
 	return nil
 }
 
