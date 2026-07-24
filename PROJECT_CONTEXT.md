@@ -29,7 +29,7 @@ labprovider is intentionally constrained:
 
 - Single node only
 - No orchestration (no Kubernetes)
-- Explicit configuration (no hidden magic)
+- Explicit configuration (hidden magic is OK if its documented)
 - Reproducible from scratch
 - Minimal moving parts
 
@@ -179,7 +179,6 @@ Remove (per service, from the UI):
 - no clustering
 - no Kubernetes
 - no advanced automation frameworks
-- no dynamic service discovery
 
 ---
 
