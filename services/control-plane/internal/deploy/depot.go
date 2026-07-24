@@ -24,13 +24,8 @@ func (d Depot) Deploy(ctx context.Context, rc *RunCtx) error {
 	if env["DEPOT_HTTP_PORT"] == env["DEPOT_HTTPS_PORT"] {
 		return fmt.Errorf("DEPOT_HTTP_PORT and DEPOT_HTTPS_PORT must be different")
 	}
-	for _, dir := range []string{env["DEPOT_DATA_DIR"], env["DEPOT_CERT_DIR"]} {
-		if dir == runtime || strings.HasPrefix(dir, runtime+"/") {
-			return fmt.Errorf("%s must not be inside %s so remove preserves depot content", dir, runtime)
-		}
-	}
-	if err := requireCAReady(ctx, env); err != nil {
-		return err
+	if dir := env["DEPOT_DATA_DIR"]; dir == runtime || strings.HasPrefix(dir, runtime+"/") {
+		return fmt.Errorf("%s must not be inside %s so remove preserves depot content", dir, runtime)
 	}
 
 	for _, dir := range []string{
@@ -42,9 +37,6 @@ func (d Depot) Deploy(ctx context.Context, rc *RunCtx) error {
 		if err := EnsureDir(dir, 0o755, -1, -1); err != nil {
 			return err
 		}
-	}
-	if err := IssueCert(ctx, rc, env["DEPOT_FQDN"], env["DEPOT_CERT_DIR"], "depot"); err != nil {
-		return err
 	}
 
 	// Managed htpasswd, regenerated from env on every deploy.
@@ -70,18 +62,13 @@ func (d Depot) Deploy(ctx context.Context, rc *RunCtx) error {
 		return err
 	}
 
+	// depot serves plain HTTP; probe the loopback-published port so readiness
+	// does not depend on DNS. Public access is at https://<DEPOT_FQDN> via Traefik.
 	rc.Log("Waiting for the depot HTTP endpoint on port %s.", env["DEPOT_HTTP_PORT"])
 	if err := waitHTTPPinned(ctx, fmt.Sprintf("http://%s:%s/healthz", env["DEPOT_FQDN"], env["DEPOT_HTTP_PORT"]), 60, 2*time.Second); err != nil {
 		return err
 	}
-	rc.Log("Waiting for the depot HTTPS endpoint on port %s.", env["DEPOT_HTTPS_PORT"])
-	caRoot := filepath.Join(env["CA_DATA_DIR"], "certs", "root_ca.crt")
-	httpsURL := fmt.Sprintf("https://%s:%s/healthz", env["DEPOT_FQDN"], env["DEPOT_HTTPS_PORT"])
-	if err := WaitHTTPSPinned(ctx, httpsURL, caRoot, 60, 2*time.Second); err != nil {
-		return err
-	}
-	rc.Log("Depot is ready on http://%s:%s and https://%s:%s.",
-		env["DEPOT_FQDN"], env["DEPOT_HTTP_PORT"], env["DEPOT_FQDN"], env["DEPOT_HTTPS_PORT"])
+	rc.Log("Depot is ready at https://%s (via Traefik).", env["DEPOT_FQDN"])
 	return nil
 }
 
@@ -94,7 +81,7 @@ func (d Depot) Remove(ctx context.Context, rc *RunCtx) error {
 		return err
 	}
 	os.Remove(filepath.Join(rc.Env["DEPOT_AUTH_DIR"], "htpasswd"))
-	rc.Log("Removed depot containers and runtime files. Persistent depot content in %s and certificates in %s were preserved.",
-		rc.Env["DEPOT_DATA_DIR"], rc.Env["DEPOT_CERT_DIR"])
+	rc.Log("Removed depot containers and runtime files. Persistent depot content in %s was preserved.",
+		rc.Env["DEPOT_DATA_DIR"])
 	return nil
 }

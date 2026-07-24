@@ -82,7 +82,7 @@ var testEnv = map[string]string{
 	"DNS_SYNC_TECHNITIUM_DASHBOARD_USER": "dashboard",
 
 	"DEPOT_FQDN":       "vcfdepot.sddc.lab",
-	"DEPOT_HTTP_PORT":  "80",
+	"DEPOT_HTTP_PORT":  "8088",
 	"DEPOT_HTTPS_PORT": "443",
 	"DEPOT_DATA_DIR":   "/opt/labprovider/depot/data",
 	"DEPOT_CERT_DIR":   "/opt/labprovider/depot/certs",

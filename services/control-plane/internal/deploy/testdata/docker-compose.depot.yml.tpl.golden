@@ -2,11 +2,26 @@ services:
   depot:
     image: docker.io/library/nginx:1.31-alpine
     restart: unless-stopped
+    # TLS is terminated by Traefik (which owns :80/:443); depot serves plain HTTP
+    # on 80, fronted at https://vcfdepot.sddc.lab. The host port is kept on the
+    # loopback for deploy-time readiness only.
     ports:
-      - "80:80"
-      - "443:443"
+      - "8088:80"
     volumes:
       - /opt/labprovider/runtime/depot/nginx.conf:/etc/nginx/nginx.conf:ro
       - /opt/labprovider/depot/data:/usr/share/nginx/html:ro
-      - /opt/labprovider/depot/certs:/etc/labprovider/certs:ro
       - /opt/labprovider/depot/auth:/etc/nginx/auth:ro
+    networks:
+      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.depot.rule=Host(`vcfdepot.sddc.lab`)"
+      - "traefik.http.routers.depot.entrypoints=websecure"
+      - "traefik.http.routers.depot.tls=true"
+      - "traefik.http.services.depot.loadbalancer.server.port=80"
+
+networks:
+  proxy:
+    external: true
