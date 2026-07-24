@@ -201,17 +201,17 @@ func resolveNetboxPepper(rc *RunCtx) (string, error) {
 func seedNetbox(ctx context.Context, rc *RunCtx, api *netboxAPI, records []seedRecord) error {
 	env := rc.Env
 
-	siteID, err := api.ensureObject(ctx, "/api/dcim/sites/", "name=Provider+Box",
+	siteID, err := api.ensureObject(ctx, "/api/dcim/sites/", "slug=labprovider",
 		map[string]any{"name": "labprovider", "slug": "labprovider", "status": "active"})
 	if err != nil {
 		return err
 	}
-	manufacturerID, err := api.ensureObject(ctx, "/api/dcim/manufacturers/", "name=Provider+Box",
+	manufacturerID, err := api.ensureObject(ctx, "/api/dcim/manufacturers/", "slug=labprovider",
 		map[string]any{"name": "labprovider", "slug": "labprovider"})
 	if err != nil {
 		return err
 	}
-	deviceTypeID, err := api.ensureObject(ctx, "/api/dcim/device-types/", "model=Provider+Box",
+	deviceTypeID, err := api.ensureObject(ctx, "/api/dcim/device-types/", "slug=labprovider",
 		map[string]any{"manufacturer": manufacturerID, "model": "labprovider", "slug": "labprovider"})
 	if err != nil {
 		return err
